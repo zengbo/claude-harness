@@ -425,6 +425,209 @@ def _infer_layers(
     return layers
 
 
+def setup_project(project_root: str) -> list[str]:
+    """Set up harness infrastructure for an existing project.
+
+    Scans the project, infers language/layers/build commands,
+    and generates CLAUDE.md, docs/ARCHITECTURE.md, docs/DEVELOPMENT.md,
+    .harness/ directories, and agent templates.
+
+    Returns list of created file paths (skips existing files).
+    """
+    root = os.path.abspath(project_root)
+    scan = scan_project(root)
+    created: list[str] = []
+
+    language = scan["language"]
+    preset = LANGUAGE_PRESETS.get(language, LANGUAGE_PRESETS["python"])
+    project_name = scan["module_name"] or os.path.basename(root)
+
+    # --- Build layers block from inferred layers or preset ---
+    inferred = scan["inferred_layers"]
+    if inferred:
+        lines = []
+        for num in sorted(inferred.keys()):
+            info = inferred[num]
+            paths = ", ".join(info["paths"])
+            lines.append(f"Layer {num}: {paths:<40} -> {info['label']}")
+        layers_block = "```layers\n" + "\n".join(lines) + "\n```"
+    else:
+        layers_block = f"```layers\n{preset['layers']}\n```"
+
+    # --- Detect build/test/lint commands from build system ---
+    build_cmd = _detect_command(root, scan, "build") or preset["build_cmd"]
+    test_cmd = _detect_command(root, scan, "test") or preset["test_cmd"]
+    lint_cmd = _detect_command(root, scan, "lint") or preset["lint_cmd"]
+    forbidden = preset.get("forbidden_patterns", "")
+
+    # --- CLAUDE.md ---
+    tmpl = _load_template("CLAUDE.md.tmpl")
+    content = tmpl.replace("{{PROJECT_NAME}}", project_name)
+    # Update commands to use `harness` CLI instead of python3 paths
+    content = content.replace(
+        "python3 harness/validate.py", "harness validate ."
+    ).replace(
+        "python3 harness/validate.py --stage lint", "harness validate . --stage lint"
+    ).replace(
+        "python3 harness/verify_action.py", "harness verify"
+    ).replace(
+        "python3 harness/memory.py query", "harness memory query"
+    ).replace(
+        "python3 harness/memory.py", "harness memory"
+    ).replace(
+        "python3 harness/trace.py success", "harness trace success"
+    ).replace(
+        "python3 harness/trace.py failure", "harness trace failure"
+    ).replace(
+        "python3 harness/trace.py checkpoint", "harness trace checkpoint"
+    ).replace(
+        "python3 harness/trace.py", "harness trace"
+    ).replace(
+        "python3 harness/critic.py", "harness critic"
+    ).replace(
+        "python3 harness/review.py", "harness review"
+    )
+    path = os.path.join(root, "CLAUDE.md")
+    if _write_if_not_exists(path, content):
+        created.append(path)
+
+    # --- docs/ARCHITECTURE.md ---
+    tmpl = _load_template("ARCHITECTURE.md.tmpl")
+    content = (
+        tmpl.replace("{{PROJECT_NAME}}", project_name)
+        .replace("{{LAYERS_BLOCK}}", layers_block)
+        .replace("{{FORBIDDEN_PATTERNS}}", forbidden)
+    )
+    # Update commands to use `harness` CLI
+    content = content.replace(
+        "python3 harness/verify_action.py", "harness verify"
+    ).replace(
+        "python3 harness/validate.py", "harness validate ."
+    )
+    path = os.path.join(root, "docs", "ARCHITECTURE.md")
+    if _write_if_not_exists(path, content):
+        created.append(path)
+
+    # --- docs/DEVELOPMENT.md ---
+    tmpl = _load_template("DEVELOPMENT.md.tmpl")
+    content = (
+        tmpl.replace("{{PROJECT_NAME}}", project_name)
+        .replace("{{BUILD_CMD}}", build_cmd)
+        .replace("{{TEST_CMD}}", test_cmd)
+        .replace("{{LINT_CMD}}", lint_cmd)
+    )
+    content = content.replace(
+        "python3 harness/validate.py", "harness validate ."
+    )
+    path = os.path.join(root, "docs", "DEVELOPMENT.md")
+    if _write_if_not_exists(path, content):
+        created.append(path)
+
+    # --- .harness/ runtime directories ---
+    for subdir in [
+        ".harness/trace/successes",
+        ".harness/trace/failures",
+        ".harness/trace/checkpoints",
+        ".harness/memory/episodic",
+        ".harness/memory/procedural",
+        ".harness/memory/failure",
+    ]:
+        dirpath = os.path.join(root, subdir)
+        os.makedirs(dirpath, exist_ok=True)
+        gk = os.path.join(dirpath, ".gitkeep")
+        if _write_if_not_exists(gk, ""):
+            created.append(gk)
+
+    # --- .claude/agents/ templates ---
+    agents_src = os.path.join(TEMPLATES_DIR, "agents")
+    agents_dst = os.path.join(root, ".claude", "agents")
+    if os.path.isdir(agents_src):
+        os.makedirs(agents_dst, exist_ok=True)
+        for fname in os.listdir(agents_src):
+            src = os.path.join(agents_src, fname)
+            dst = os.path.join(agents_dst, fname)
+            if os.path.isfile(src) and _write_if_not_exists(dst, Path(src).read_text(encoding="utf-8")):
+                created.append(dst)
+
+    # --- .gitignore for .harness ---
+    gitignore = os.path.join(root, ".gitignore")
+    harness_ignore = "\n# Harness runtime data\n.harness/\n"
+    if os.path.exists(gitignore):
+        existing = Path(gitignore).read_text(encoding="utf-8")
+        if ".harness/" not in existing:
+            with open(gitignore, "a") as f:
+                f.write(harness_ignore)
+            created.append(gitignore + " (appended)")
+    else:
+        _write_if_not_exists(gitignore, harness_ignore.lstrip())
+        created.append(gitignore)
+
+    return created
+
+
+def _detect_command(root: str, scan: dict[str, Any], kind: str) -> str | None:
+    """Try to detect build/test/lint commands from project config."""
+    lang = scan["language"]
+    builds = scan["build_systems"]
+
+    if kind == "build":
+        if "go.mod" in builds:
+            return "go build ./..."
+        if "Cargo.toml" in builds:
+            return "cargo build"
+        if "package.json" in builds:
+            return "npx tsc --noEmit"
+        if "pom.xml" in builds:
+            return "mvn compile"
+        if "composer.json" in builds:
+            return "php -l src/**/*.php"
+        if "Makefile" in builds:
+            return "make build"
+    elif kind == "test":
+        if "go.mod" in builds:
+            return "go test ./..."
+        if "Cargo.toml" in builds:
+            return "cargo test"
+        if "package.json" in builds:
+            # Check for vitest/jest in package.json
+            pkg = os.path.join(root, "package.json")
+            try:
+                import json as _json
+                data = _json.loads(Path(pkg).read_text(encoding="utf-8"))
+                scripts = data.get("scripts", {})
+                if "test" in scripts:
+                    return "npm test"
+            except (ValueError, KeyError):
+                pass
+            return "npx vitest run"
+        if "pom.xml" in builds:
+            return "mvn test"
+        if "composer.json" in builds:
+            return "vendor/bin/phpunit"
+        if lang == "python":
+            if os.path.exists(os.path.join(root, "pytest.ini")) or \
+               os.path.exists(os.path.join(root, "pyproject.toml")):
+                return "pytest"
+            return "python3 -m pytest"
+    elif kind == "lint":
+        lint_configs = scan["existing_lint"]
+        if any("golangci" in f for f in lint_configs):
+            return "golangci-lint run"
+        if any("eslint" in f for f in lint_configs):
+            return "npx eslint src/"
+        if any("ruff" in f for f in lint_configs):
+            return "ruff check ."
+        if any("flake8" in f for f in lint_configs):
+            return "flake8 ."
+        if any("phpstan" in f for f in lint_configs):
+            return "vendor/bin/phpstan analyse src/"
+        if "Cargo.toml" in builds:
+            return "cargo clippy"
+        if "pom.xml" in builds:
+            return "mvn checkstyle:check"
+    return None
+
+
 def score_project(
     scan: dict[str, Any], project_root: str
 ) -> dict[str, int]:

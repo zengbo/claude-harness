@@ -22,6 +22,33 @@ def cmd_init(args):
     return 0
 
 
+def cmd_setup(args):
+    from harness.creator import setup_project, scan_project, score_project
+    import os
+
+    root = os.path.abspath(args.project_root)
+    print(f"[harness] Scanning {root} ...")
+    created = setup_project(root)
+
+    if created:
+        print(f"\n\u2713 Created {len(created)} files:")
+        for p in created:
+            rel = os.path.relpath(p, root) if not p.endswith("(appended)") else p
+            print(f"  {rel}")
+    else:
+        print("\nAll harness files already exist. Nothing to generate.")
+
+    scan = scan_project(root)
+    result = score_project(scan, root)
+    print(f"\n[harness] Score: {result['total']}/100")
+    print("\nNext steps:")
+    print("  1. Review docs/ARCHITECTURE.md — adjust layer rules to match your project")
+    print("  2. Review docs/DEVELOPMENT.md — verify build/test/lint commands")
+    print("  3. Review CLAUDE.md — customize agent work rules")
+    print("  4. Run: harness validate .")
+    return 0
+
+
 def cmd_scan(args):
     from harness.creator import scan_project
 
@@ -170,8 +197,12 @@ def build_parser():
     p.add_argument("--stage", choices=["build", "lint", "test", "verify"])
     p.add_argument("--affected-only", action="store_true")
 
+    # --- setup ---
+    p = sub.add_parser("setup", help="Set up harness for an existing project (auto-detect)")
+    p.add_argument("project_root", nargs="?", default=".")
+
     # --- init ---
-    p = sub.add_parser("init", help="Scaffold harness infrastructure for a project")
+    p = sub.add_parser("init", help="Scaffold harness for a new project (from template)")
     p.add_argument("project_root", nargs="?", default=".")
     p.add_argument("--name", required=True, help="Project name")
     p.add_argument("--lang", default="python", help="Language (go/python/typescript/php/rust/java)")
@@ -274,6 +305,7 @@ def main():
 
     handlers = {
         "validate": cmd_validate,
+        "setup": cmd_setup,
         "init": cmd_init,
         "scan": cmd_scan,
         "score": cmd_score,
