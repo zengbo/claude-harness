@@ -37,8 +37,9 @@ def cmd_score(args):
     scan = scan_project(args.project_root)
     result = score_project(scan, args.project_root)
     print(f"  Total: {result['total']}/100")
-    for dim, val in result["dimensions"].items():
-        print(f"  {dim}: {val}")
+    for key, val in result.items():
+        if key != "total":
+            print(f"  {key}: {val}")
     return 0
 
 
