@@ -4,7 +4,7 @@ import json
 import tempfile
 import shutil
 
-from harness.critic import analyze_failures, find_compilable_patterns
+from harness.critic import analyze_failures, find_compilable_patterns, suggest_lint_rules
 from harness.trace import record_failure, record_success
 from harness.memory import save_memory
 
@@ -100,6 +100,64 @@ class TestFindCompilablePatterns(unittest.TestCase):
                     success_rate="4/4")
         result = find_compilable_patterns(self.harness_dir)
         self.assertIn("script_name", result[0])
+
+
+class TestSuggestLintRules(unittest.TestCase):
+    def test_layer_import_failure_suggests_forbidden_pattern(self):
+        patterns = [{
+            "error_pattern": "layer # importing config module",
+            "count": 3,
+            "examples": [
+                {"task": "add user type", "error": "Layer 0 importing config module"},
+                {"task": "add model", "error": "Layer 0 importing config module"},
+                {"task": "update types", "error": "Layer 0 importing config module"},
+            ],
+            "root_cause": "types/ files importing config package",
+            "suggestion": "",
+        }]
+        suggestions = suggest_lint_rules(patterns)
+        self.assertTrue(len(suggestions) > 0)
+        self.assertEqual(suggestions[0]["type"], "forbidden_pattern")
+        self.assertIn("layer:0", suggestions[0]["target"])
+
+    def test_file_size_failure_suggests_max_lines(self):
+        patterns = [{
+            "error_pattern": "file too long: # lines (max #)",
+            "count": 4,
+            "examples": [{"task": "x", "error": "file too long: 600 lines (max 500)"}],
+            "root_cause": None,
+            "suggestion": "",
+        }]
+        suggestions = suggest_lint_rules(patterns)
+        self.assertTrue(len(suggestions) > 0)
+        self.assertEqual(suggestions[0]["type"], "max_file_lines")
+
+    def test_non_lint_pattern_returns_empty(self):
+        patterns = [{
+            "error_pattern": "timeout after # seconds",
+            "count": 2,
+            "examples": [{"task": "x", "error": "timeout after 30 seconds"}],
+            "root_cause": None,
+            "suggestion": "",
+        }]
+        suggestions = suggest_lint_rules(patterns)
+        self.assertEqual(len(suggestions), 0)
+
+    def test_naming_failure_suggests_naming_rule(self):
+        patterns = [{
+            "error_pattern": "naming case violation",
+            "count": 3,
+            "examples": [{"task": "x", "error": "naming case violation in file"}],
+            "root_cause": None,
+            "suggestion": "",
+        }]
+        suggestions = suggest_lint_rules(patterns)
+        self.assertTrue(len(suggestions) > 0)
+        self.assertEqual(suggestions[0]["type"], "naming")
+
+    def test_empty_patterns_returns_empty(self):
+        suggestions = suggest_lint_rules([])
+        self.assertEqual(suggestions, [])
 
 
 if __name__ == "__main__":

@@ -353,6 +353,7 @@ def build_parser():
     p.add_argument("--harness-dir", default=".harness")
     p.add_argument("--min-count", type=int, default=2)
     p.add_argument("--min-successes", type=int, default=3)
+    p.add_argument("--apply", action="store_true", help="Preview lint rule changes to apply")
 
     # --- guard ---
     p = sub.add_parser("guard", help="Test commands against guard rules or show current config")

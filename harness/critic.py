@@ -166,6 +166,61 @@ def find_compilable_patterns(
     return compilable
 
 
+def suggest_lint_rules(patterns: list[dict]) -> list[dict]:
+    """Extract lint rule suggestions from recurring failure patterns.
+
+    Returns list of dicts with keys: type, description, target, value
+    """
+    suggestions = []
+    for p in patterns:
+        error = p.get("error_pattern", "")
+        root_cause = p.get("root_cause", "") or ""
+
+        # Layer + import → per-layer forbidden_pattern
+        if "layer" in error and ("import" in error or "import" in root_cause):
+            layer_num = None
+            for ex in p.get("examples", []):
+                m = re.search(r"Layer\s+(\d+)", ex.get("error", ""))
+                if m:
+                    layer_num = int(m.group(1))
+                    break
+            import_target = None
+            for ex in p.get("examples", []):
+                m = re.search(r"importing\s+(\S+)", ex.get("error", ""))
+                if m:
+                    import_target = m.group(1)
+                    break
+            target = f"layer:{layer_num}" if layer_num is not None else "global"
+            value = import_target or "unknown"
+            suggestions.append({
+                "type": "forbidden_pattern",
+                "description": f"Add forbidden_patterns for {target}: {value}",
+                "target": target,
+                "value": value,
+            })
+
+        # File size
+        elif "too long" in error or ("lines" in error and "max" in error):
+            suggestions.append({
+                "type": "max_file_lines",
+                "description": "Consider lowering max_file_lines in ARCHITECTURE.md",
+                "target": "global",
+                "value": "lower threshold",
+            })
+
+        # Naming
+        elif "naming" in error or "case" in error:
+            suggestions.append({
+                "type": "naming",
+                "description": "Add or tighten naming convention rules",
+                "target": "global",
+                "value": "naming rule",
+            })
+        # Other patterns can't be mapped to lint rules — skip
+
+    return suggestions
+
+
 def main() -> int:
     """CLI entry point."""
     import argparse
@@ -215,6 +270,15 @@ def main() -> int:
             print()
     else:
         print("No compilable patterns found.\n")
+
+    # Suggest lint rules
+    lint_suggestions = suggest_lint_rules(patterns)
+    if lint_suggestions:
+        print("\n[critic] Suggested lint rule changes:\n")
+        for i, s in enumerate(lint_suggestions, 1):
+            print(f"  {i}. [{s['type']}] {s['description']}")
+            print(f"     Target: {s['target']}, Value: {s['value']}")
+            print()
 
     # Save report
     report_path = os.path.join(hdir, "critic_report.json")
