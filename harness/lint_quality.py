@@ -28,6 +28,24 @@ def _is_snake_case(name: str) -> bool:
     return bool(re.match(r"^[a-z][a-z0-9_]*$", stem))
 
 
+def _is_pascal_case(name: str) -> bool:
+    return bool(re.match(r"^[A-Z][a-zA-Z0-9]*$", name))
+
+
+# Type/class/interface declaration patterns per language
+_TYPE_PATTERNS = {
+    ".go": re.compile(r"^type\s+(\w+)\s+(?:struct|interface)"),
+    ".py": re.compile(r"^class\s+(\w+)[\s:(]"),
+    ".ts": re.compile(r"^(?:export\s+)?(?:interface|class|type)\s+(\w+)[\s<{=]"),
+    ".tsx": re.compile(r"^(?:export\s+)?(?:interface|class|type)\s+(\w+)[\s<{=]"),
+    ".js": re.compile(r"^(?:export\s+)?class\s+(\w+)[\s{]"),
+    ".jsx": re.compile(r"^(?:export\s+)?class\s+(\w+)[\s{]"),
+    ".rs": re.compile(r"^(?:pub\s+)?(?:struct|enum|trait)\s+(\w+)"),
+    ".java": re.compile(r"^(?:public\s+|private\s+|protected\s+)?(?:class|interface|enum)\s+(\w+)"),
+    ".php": re.compile(r"^(?:abstract\s+|final\s+)?class\s+(\w+)"),
+}
+
+
 def check_quality(
     project_root: str,
     quality: dict,
@@ -44,6 +62,7 @@ def check_quality(
     max_lines = quality.get("max_file_lines", 500)
     forbidden = quality.get("forbidden_patterns", [])
     naming_files = quality.get("naming_files")
+    naming_types = quality.get("naming_types")
     violations = []
 
     for root, dirs, files in os.walk(project_root):
@@ -101,6 +120,24 @@ def check_quality(
                             ),
                             "rule": "forbidden_patterns",
                         })
+
+            # Check type naming conventions
+            if naming_types == "PascalCase":
+                type_pattern = _TYPE_PATTERNS.get(ext)
+                if type_pattern:
+                    for i, line in enumerate(lines, 1):
+                        m = type_pattern.match(line.strip())
+                        if m:
+                            type_name = m.group(1)
+                            if not _is_pascal_case(type_name):
+                                violations.append({
+                                    "file": fpath,
+                                    "message": (
+                                        f"{rel}:{i}: type '{type_name}' "
+                                        f"is not PascalCase"
+                                    ),
+                                    "rule": "naming_types",
+                                })
 
     return violations
 
