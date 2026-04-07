@@ -84,5 +84,50 @@ class TestFullWorkflow(unittest.TestCase):
         self.assertIn("INVALID", output)
 
 
+class TestV2Integration(unittest.TestCase):
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp()
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir)
+
+    def test_full_setup_produces_working_guard(self):
+        """setup → guard.yaml exists → evaluate works."""
+        from harness.creator import setup_project
+        from harness.guard import load_guard_config, evaluate, ActionContext
+
+        setup_project(self.tmpdir)
+        cfg = load_guard_config(os.path.join(self.tmpdir, ".harness", "guard.yaml"))
+
+        ctx = ActionContext("bash", "sudo rm -rf /", None, None, self.tmpdir)
+        v = evaluate(ctx, cfg)
+        self.assertEqual(v.action, "deny")
+        self.assertEqual(v.rule_id, "R07_sudo")
+
+    def test_review_perspectives_from_generated_arch(self):
+        """init → ARCHITECTURE.md has perspectives → review works."""
+        from harness.creator import generate_scaffold
+        from harness.config import parse_review_perspectives
+
+        generate_scaffold(self.tmpdir, "testproj", "python", "library")
+        arch = os.path.join(self.tmpdir, "docs", "ARCHITECTURE.md")
+        perspectives = parse_review_perspectives(arch)
+        self.assertIn("security", perspectives)
+        self.assertIn("performance", perspectives)
+
+    def test_hooks_settings_valid_json(self):
+        """setup → settings.json is valid and has hooks."""
+        import json
+        from harness.creator import setup_project
+
+        setup_project(self.tmpdir)
+        settings_path = os.path.join(self.tmpdir, ".claude", "settings.json")
+        with open(settings_path) as f:
+            data = json.load(f)
+        self.assertIn("hooks", data)
+        matchers = [h["matcher"] for h in data["hooks"]["PreToolUse"]]
+        self.assertIn("Bash", matchers)
+
+
 if __name__ == "__main__":
     unittest.main()
