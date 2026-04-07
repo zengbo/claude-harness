@@ -245,13 +245,18 @@ def generate_scaffold(
                 created.append(dst)
 
     # --- .claude/skills/ templates ---
+    # Claude Code requires skills in subdirectories: skills/<name>/SKILL.md
     skills_src = os.path.join(TEMPLATES_DIR, "skills")
     skills_dst = os.path.join(target_dir, ".claude", "skills")
     if os.path.isdir(skills_src):
-        os.makedirs(skills_dst, exist_ok=True)
         for fname in os.listdir(skills_src):
+            if not fname.endswith(".md"):
+                continue
+            skill_name = fname[:-3]  # "harness-init.md" → "harness-init"
+            skill_dir = os.path.join(skills_dst, skill_name)
+            os.makedirs(skill_dir, exist_ok=True)
             src = os.path.join(skills_src, fname)
-            dst = os.path.join(skills_dst, fname)
+            dst = os.path.join(skill_dir, "SKILL.md")
             if os.path.isfile(src) and _write_if_not_exists(dst, Path(src).read_text(encoding="utf-8")):
                 created.append(dst)
 
@@ -534,13 +539,18 @@ def setup_project(project_root: str) -> list[str]:
                 created.append(dst)
 
     # --- .claude/skills/ templates ---
+    # Claude Code requires skills in subdirectories: skills/<name>/SKILL.md
     skills_src = os.path.join(TEMPLATES_DIR, "skills")
     skills_dst = os.path.join(root, ".claude", "skills")
     if os.path.isdir(skills_src):
-        os.makedirs(skills_dst, exist_ok=True)
         for fname in os.listdir(skills_src):
+            if not fname.endswith(".md"):
+                continue
+            skill_name = fname[:-3]  # "harness-init.md" → "harness-init"
+            skill_dir = os.path.join(skills_dst, skill_name)
+            os.makedirs(skill_dir, exist_ok=True)
             src = os.path.join(skills_src, fname)
-            dst = os.path.join(skills_dst, fname)
+            dst = os.path.join(skill_dir, "SKILL.md")
             if os.path.isfile(src) and _write_if_not_exists(dst, Path(src).read_text(encoding="utf-8")):
                 created.append(dst)
 

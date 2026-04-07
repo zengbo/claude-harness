@@ -177,10 +177,11 @@ class TestSetupProjectV2(unittest.TestCase):
         setup_project(self.tmpdir)
         skills_dir = os.path.join(self.tmpdir, ".claude", "skills")
         self.assertTrue(os.path.isdir(skills_dir))
-        expected = ["harness-init.md", "harness-do.md", "harness-validate.md",
-                    "harness-review.md", "harness-critic.md"]
+        expected = ["harness-init", "harness-do", "harness-validate",
+                    "harness-review", "harness-critic"]
         for skill in expected:
-            self.assertTrue(os.path.exists(os.path.join(skills_dir, skill)), f"Missing: {skill}")
+            skill_file = os.path.join(skills_dir, skill, "SKILL.md")
+            self.assertTrue(os.path.exists(skill_file), f"Missing: {skill}/SKILL.md")
 
     def test_setup_creates_guard_yaml(self):
         from harness.creator import setup_project
@@ -209,7 +210,7 @@ class TestSetupProjectV2(unittest.TestCase):
         generate_scaffold(self.tmpdir, "testproj", "python", "library")
         skills_dir = os.path.join(self.tmpdir, ".claude", "skills")
         self.assertTrue(os.path.isdir(skills_dir))
-        self.assertTrue(os.path.exists(os.path.join(skills_dir, "harness-do.md")))
+        self.assertTrue(os.path.exists(os.path.join(skills_dir, "harness-do", "SKILL.md")))
 
 
 if __name__ == "__main__":
