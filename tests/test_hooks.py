@@ -39,7 +39,11 @@ class TestGenerateHooksConfig(unittest.TestCase):
         self.assertIn("Write", matchers)
         self.assertIn("Edit", matchers)
 
-    def test_commands_reference_hooks_py(self):
+    def test_hooks_array_format(self):
+        """Each matcher entry must have a 'hooks' array with type+command."""
         config = generate_hooks_config()
-        for hook in config["hooks"]["PreToolUse"]:
-            self.assertIn("harness/hooks.py", hook["command"])
+        for entry in config["hooks"]["PreToolUse"]:
+            self.assertIn("hooks", entry)
+            self.assertIsInstance(entry["hooks"], list)
+            self.assertEqual(entry["hooks"][0]["type"], "command")
+            self.assertIn("harness/hooks.py", entry["hooks"][0]["command"])

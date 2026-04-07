@@ -75,9 +75,18 @@ def generate_hooks_config() -> dict:
     return {
         "hooks": {
             "PreToolUse": [
-                {"matcher": "Bash", "command": "python3 harness/hooks.py bash"},
-                {"matcher": "Write", "command": "python3 harness/hooks.py write"},
-                {"matcher": "Edit", "command": "python3 harness/hooks.py edit"},
+                {
+                    "matcher": "Bash",
+                    "hooks": [{"type": "command", "command": "python3 harness/hooks.py bash"}],
+                },
+                {
+                    "matcher": "Write",
+                    "hooks": [{"type": "command", "command": "python3 harness/hooks.py write"}],
+                },
+                {
+                    "matcher": "Edit",
+                    "hooks": [{"type": "command", "command": "python3 harness/hooks.py edit"}],
+                },
             ]
         }
     }
