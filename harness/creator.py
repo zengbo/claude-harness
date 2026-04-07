@@ -233,6 +233,17 @@ def generate_scaffold(
         if _write_if_not_exists(gk, ""):
             created.append(gk)
 
+    # --- .claude/agents/ templates ---
+    agents_src = os.path.join(TEMPLATES_DIR, "agents")
+    agents_dst = os.path.join(target_dir, ".claude", "agents")
+    if os.path.isdir(agents_src):
+        os.makedirs(agents_dst, exist_ok=True)
+        for fname in os.listdir(agents_src):
+            src = os.path.join(agents_src, fname)
+            dst = os.path.join(agents_dst, fname)
+            if os.path.isfile(src) and _write_if_not_exists(dst, Path(src).read_text(encoding="utf-8")):
+                created.append(dst)
+
     # --- .gitignore addition for .harness ---
     gitignore = os.path.join(target_dir, ".gitignore")
     harness_ignore = "\n# Harness runtime data (optional: remove to share team memory)\n.harness/\n"
@@ -247,6 +258,231 @@ def generate_scaffold(
         created.append(gitignore)
 
     return created
+
+
+def scan_project(project_root: str) -> dict[str, Any]:
+    """Scan an existing project and analyze its structure.
+
+    Returns dict with: language, source_file_count, test_file_count,
+    build_systems, directories, inferred_layers, existing_lint, module_name.
+    """
+    root = os.path.abspath(project_root)
+
+    # Count files by extension
+    ext_counts: dict[str, int] = {}
+    test_count = 0
+    source_count = 0
+    source_exts = {".go", ".py", ".ts", ".tsx", ".js", ".jsx", ".rs", ".java", ".php"}
+    test_patterns = {"_test.go", "test_", ".test.", ".spec."}
+
+    for dirpath, dirs, files in os.walk(root):
+        dirs[:] = [
+            d for d in dirs
+            if not d.startswith(".") and d not in {
+                "node_modules", "vendor", "venv", ".venv", "__pycache__",
+            }
+        ]
+        for fname in files:
+            ext = os.path.splitext(fname)[1]
+            if ext in source_exts:
+                ext_counts[ext] = ext_counts.get(ext, 0) + 1
+                source_count += 1
+                if any(p in fname for p in test_patterns):
+                    test_count += 1
+
+    # Detect primary language
+    lang_map = {
+        ".go": "go", ".py": "python", ".ts": "typescript",
+        ".tsx": "typescript", ".js": "javascript", ".jsx": "javascript",
+        ".rs": "rust", ".java": "java", ".php": "php",
+    }
+    language = "unknown"
+    if ext_counts:
+        top_ext = max(ext_counts, key=ext_counts.get)
+        language = lang_map.get(top_ext, "unknown")
+
+    # Detect build systems
+    build_systems: list[str] = []
+    build_files = {
+        "Makefile": "Makefile", "go.mod": "go.mod",
+        "package.json": "package.json", "Cargo.toml": "Cargo.toml",
+        "composer.json": "composer.json", "pom.xml": "pom.xml",
+        "build.gradle": "build.gradle", "pyproject.toml": "pyproject.toml",
+    }
+    for bfile, name in build_files.items():
+        if os.path.exists(os.path.join(root, bfile)):
+            build_systems.append(name)
+
+    # Detect top-level directories
+    directories: list[str] = []
+    for entry in sorted(os.listdir(root)):
+        fpath = os.path.join(root, entry)
+        if os.path.isdir(fpath) and not entry.startswith("."):
+            directories.append(entry + "/")
+
+    # Detect existing lint config
+    existing_lint: list[str] = []
+    lint_files = [
+        ".eslintrc", ".eslintrc.js", ".eslintrc.json", ".eslintrc.yml",
+        ".golangci.yml", ".golangci.yaml",
+        "pyproject.toml", ".flake8", ".ruff.toml",
+        "phpstan.neon", "phpcs.xml",
+    ]
+    for lf in lint_files:
+        if os.path.exists(os.path.join(root, lf)):
+            existing_lint.append(lf)
+
+    # Infer layers from directory structure
+    inferred_layers = _infer_layers(root, language, directories)
+
+    # Detect module name
+    module_name = _detect_module_name(root)
+
+    return {
+        "language": language,
+        "source_file_count": source_count,
+        "test_file_count": test_count,
+        "build_systems": build_systems,
+        "directories": directories,
+        "inferred_layers": inferred_layers,
+        "existing_lint": existing_lint,
+        "module_name": module_name,
+    }
+
+
+def _detect_module_name(root: str) -> str | None:
+    """Detect the module/package name from build config."""
+    go_mod = os.path.join(root, "go.mod")
+    if os.path.exists(go_mod):
+        for line in Path(go_mod).read_text(encoding="utf-8").splitlines():
+            if line.startswith("module "):
+                return line.split()[1]
+
+    pkg_json = os.path.join(root, "package.json")
+    if os.path.exists(pkg_json):
+        import json as _json
+        try:
+            data = _json.loads(Path(pkg_json).read_text(encoding="utf-8"))
+            return data.get("name")
+        except (ValueError, KeyError):
+            pass
+
+    return None
+
+
+def _infer_layers(
+    root: str, language: str, directories: list[str]
+) -> dict[int, dict[str, Any]]:
+    """Infer layer assignments from directory names."""
+    layer_hints: dict[str, int] = {
+        # Layer 0: types/models
+        "types": 0, "models": 0, "dto": 0, "dtos": 0, "entities": 0,
+        # Layer 1: utils/helpers
+        "utils": 1, "helpers": 1, "util": 1, "helper": 1, "lib": 1, "pkg": 1,
+        # Layer 2: config
+        "config": 2, "configuration": 2, "settings": 2,
+        # Layer 3: services/core/domain
+        "services": 3, "service": 3, "core": 3, "domain": 3, "logic": 3,
+        # Layer 4: api/cmd/cli/handlers/controllers/routes
+        "api": 4, "cmd": 4, "cli": 4, "handlers": 4, "handler": 4,
+        "controllers": 4, "controller": 4, "routes": 4, "http": 4,
+        "ui": 4, "web": 4, "console": 4,
+    }
+
+    layers: dict[int, dict[str, Any]] = {}
+
+    def _scan_dir(base: str, prefix: str):
+        for entry in sorted(os.listdir(base)):
+            fpath = os.path.join(base, entry)
+            if not os.path.isdir(fpath) or entry.startswith("."):
+                continue
+            rel = prefix + entry
+            low = entry.lower()
+            if low in layer_hints:
+                layer_num = layer_hints[low]
+                if layer_num not in layers:
+                    layers[layer_num] = {"paths": [], "label": ""}
+                layers[layer_num]["paths"].append(rel + "/")
+
+    # Scan top-level and one level deep (e.g. internal/types)
+    _scan_dir(root, "")
+    for d in directories:
+        subdir = os.path.join(root, d.rstrip("/"))
+        if os.path.isdir(subdir):
+            _scan_dir(subdir, d)
+
+    # Add labels
+    label_map = {
+        0: "Pure type definitions",
+        1: "Utility functions",
+        2: "Configuration",
+        3: "Business logic",
+        4: "Interface layer (no mutual imports)",
+    }
+    for num, info in layers.items():
+        info["label"] = label_map.get(num, f"Layer {num}")
+
+    return layers
+
+
+def score_project(
+    scan: dict[str, Any], project_root: str
+) -> dict[str, int]:
+    """Score a project's harness readiness (0-100).
+
+    Dimensions: documentation (30), lint_coverage (30),
+    test_coverage (20), validation_pipeline (20).
+    """
+    root = os.path.abspath(project_root)
+
+    # Documentation (max 30)
+    doc_score = 0
+    if os.path.exists(os.path.join(root, "CLAUDE.md")) or os.path.exists(
+        os.path.join(root, "AGENTS.md")
+    ):
+        doc_score += 15
+    if os.path.exists(os.path.join(root, "docs", "ARCHITECTURE.md")):
+        doc_score += 10
+    elif os.path.exists(os.path.join(root, "README.md")):
+        doc_score += 5
+    if os.path.exists(os.path.join(root, "docs", "DEVELOPMENT.md")):
+        doc_score += 5
+
+    # Lint coverage (max 30)
+    lint_score = 0
+    if scan["existing_lint"]:
+        lint_score += 15
+    if os.path.exists(os.path.join(root, "harness", "lint_deps.py")):
+        lint_score += 10
+    if os.path.exists(os.path.join(root, "harness", "lint_quality.py")):
+        lint_score += 5
+
+    # Test coverage (max 20)
+    test_score = 0
+    if scan["source_file_count"] > 0:
+        ratio = scan["test_file_count"] / scan["source_file_count"]
+        test_score = min(15, int(ratio * 30))
+    if os.path.exists(os.path.join(root, "scripts", "verify")):
+        test_score += 5
+
+    # Validation pipeline (max 20)
+    pipeline_score = 0
+    if os.path.exists(os.path.join(root, "harness", "validate.py")):
+        pipeline_score += 15
+    elif scan["build_systems"]:
+        pipeline_score += 5
+    if os.path.exists(os.path.join(root, "scripts", "validate.sh")):
+        pipeline_score += 5
+
+    total = doc_score + lint_score + test_score + pipeline_score
+
+    return {
+        "total": total,
+        "documentation": doc_score,
+        "lint_coverage": lint_score,
+        "test_coverage": test_score,
+        "validation_pipeline": pipeline_score,
+    }
 
 
 def main() -> int:

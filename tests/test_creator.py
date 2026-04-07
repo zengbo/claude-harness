@@ -5,6 +5,15 @@ import shutil
 
 from harness.creator import generate_scaffold, LANGUAGE_PRESETS
 
+try:
+    from harness.creator import scan_project, score_project
+except ImportError:
+    scan_project = None
+    score_project = None
+
+FIXTURES = os.path.join(os.path.dirname(__file__), "fixtures")
+EXISTING = os.path.join(FIXTURES, "existing_project")
+
 
 class TestLanguagePresets(unittest.TestCase):
     def test_go_preset_exists(self):
@@ -86,6 +95,74 @@ class TestGenerateScaffold(unittest.TestCase):
         generate_scaffold(self.tmpdir, "my-api", "go", "web-api")
         with open(os.path.join(self.tmpdir, "CLAUDE.md")) as f:
             self.assertIn("my-api", f.read())
+
+    def test_generates_agent_templates(self):
+        generate_scaffold(self.tmpdir, "test-project", "go", "web-api")
+        coder_path = os.path.join(
+            self.tmpdir, ".claude", "agents", "harness-coder.md"
+        )
+        reviewer_path = os.path.join(
+            self.tmpdir, ".claude", "agents", "harness-reviewer.md"
+        )
+        self.assertTrue(os.path.exists(coder_path))
+        self.assertTrue(os.path.exists(reviewer_path))
+        with open(coder_path) as f:
+            self.assertIn("Harness Coder", f.read())
+        with open(reviewer_path) as f:
+            self.assertIn("Harness Reviewer", f.read())
+
+
+@unittest.skipIf(scan_project is None, "scan_project not yet implemented")
+class TestScanProject(unittest.TestCase):
+    def setUp(self):
+        self.scan = scan_project(EXISTING)
+
+    def test_detects_language(self):
+        self.assertEqual(self.scan["language"], "go")
+
+    def test_counts_source_files(self):
+        self.assertGreaterEqual(self.scan["source_file_count"], 5)
+
+    def test_detects_build_system(self):
+        self.assertIn("Makefile", self.scan["build_systems"])
+
+    def test_detects_directories(self):
+        self.assertIn("internal/", self.scan["directories"])
+        self.assertIn("cmd/", self.scan["directories"])
+
+    def test_infers_layers(self):
+        layers = self.scan["inferred_layers"]
+        self.assertIsInstance(layers, dict)
+        self.assertGreater(len(layers), 0)
+
+    def test_detects_existing_tests(self):
+        # No test files in fixture
+        self.assertEqual(self.scan["test_file_count"], 0)
+
+
+@unittest.skipIf(score_project is None, "score_project not yet implemented")
+class TestScoreProject(unittest.TestCase):
+    def setUp(self):
+        self.scan = scan_project(EXISTING)
+        self.score = score_project(self.scan, EXISTING)
+
+    def test_returns_total_score(self):
+        self.assertIsInstance(self.score["total"], int)
+        self.assertGreaterEqual(self.score["total"], 0)
+        self.assertLessEqual(self.score["total"], 100)
+
+    def test_has_dimension_scores(self):
+        self.assertIn("documentation", self.score)
+        self.assertIn("lint_coverage", self.score)
+        self.assertIn("test_coverage", self.score)
+        self.assertIn("validation_pipeline", self.score)
+
+    def test_low_score_for_no_docs(self):
+        # Fixture has no CLAUDE.md or docs/
+        self.assertLessEqual(self.score["documentation"], 10)
+
+    def test_low_score_for_no_harness(self):
+        self.assertLessEqual(self.score["validation_pipeline"], 5)
 
 
 if __name__ == "__main__":
