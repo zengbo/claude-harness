@@ -55,6 +55,107 @@ DEFAULT_SECRET_PATTERNS = [
 ]
 
 
+def _check_R03_force_push(ctx: ActionContext, cfg: GuardConfig) -> Verdict | None:
+    """Return Verdict if triggered, None if not applicable."""
+    if ctx.action_type != "bash" or not ctx.command:
+        return None
+    cmd = ctx.command
+    if "--force" in cmd or re.search(r"\s-f(\s|$)", cmd):
+        if "git push" in cmd:
+            return Verdict("deny", "R03_force_push", f"Force push blocked: {cmd!r}")
+    return None
+
+
+def _check_R04_push_main(ctx: ActionContext, cfg: GuardConfig) -> Verdict | None:
+    """Return Verdict if triggered, None if not applicable."""
+    if ctx.action_type != "bash" or not ctx.command:
+        return None
+    if re.search(r"git push\s+\S+\s+(main|master)\b", ctx.command):
+        return Verdict("warn", "R04_push_main", f"Pushing to protected branch: {ctx.command!r}")
+    return None
+
+
+def _check_R05_destructive_git(ctx: ActionContext, cfg: GuardConfig) -> Verdict | None:
+    """Return Verdict if triggered, None if not applicable."""
+    if ctx.action_type != "bash" or not ctx.command:
+        return None
+    cmd = ctx.command
+    patterns = [
+        r"git\s+reset\s+--hard",
+        r"git\s+checkout\s+\.",
+        r"git\s+clean\s+.*-f",
+    ]
+    for pat in patterns:
+        if re.search(pat, cmd):
+            return Verdict("warn", "R05_destructive_git", f"Destructive git command: {cmd!r}")
+    return None
+
+
+def _check_R06_protected_files(ctx: ActionContext, cfg: GuardConfig) -> Verdict | None:
+    """Return Verdict if triggered, None if not applicable."""
+    if ctx.action_type not in ("write", "edit") or not ctx.file_path:
+        return None
+    path = ctx.file_path
+    for pattern in cfg.protected_paths:
+        if pattern.endswith("/"):
+            if path.startswith(pattern):
+                return Verdict("deny", "R06_protected_files", f"Write to protected path {path!r} blocked")
+        else:
+            basename = os.path.basename(path)
+            if fnmatch.fnmatch(basename, pattern) or fnmatch.fnmatch(path, pattern):
+                return Verdict("deny", "R06_protected_files", f"Write to protected path {path!r} blocked")
+    return None
+
+
+def _check_R07_sudo(ctx: ActionContext, cfg: GuardConfig) -> Verdict | None:
+    """Return Verdict if triggered, None if not applicable."""
+    if ctx.action_type != "bash" or not ctx.command:
+        return None
+    if re.search(r"\bsudo\b", ctx.command):
+        return Verdict("deny", "R07_sudo", f"sudo usage blocked: {ctx.command!r}")
+    return None
+
+
+def _check_R08_secret_pattern(ctx: ActionContext, cfg: GuardConfig) -> Verdict | None:
+    """Return Verdict if triggered, None if not applicable."""
+    if not ctx.content:
+        return None
+    for pattern in cfg.secret_patterns:
+        if re.search(pattern, ctx.content):
+            return Verdict("warn", "R08_secret_pattern", f"Secret pattern {pattern!r} detected in content")
+    return None
+
+
+RULES: dict[str, Callable[[ActionContext, GuardConfig], Verdict | None]] = {
+    "R03_force_push": _check_R03_force_push,
+    "R04_push_main": _check_R04_push_main,
+    "R05_destructive_git": _check_R05_destructive_git,
+    "R06_protected_files": _check_R06_protected_files,
+    "R07_sudo": _check_R07_sudo,
+    "R08_secret_pattern": _check_R08_secret_pattern,
+}
+
+
+def evaluate(ctx: ActionContext, cfg: GuardConfig) -> Verdict:
+    """Run all enabled rules, return merged verdict. deny > warn > allow."""
+    triggered: list[Verdict] = []
+    for rule_id, fn in RULES.items():
+        if cfg.rules.get(rule_id) is False:
+            continue
+        result = fn(ctx, cfg)
+        if result is not None:
+            triggered.append(result)
+
+    for v in triggered:
+        if v.action == "deny":
+            return v
+    for v in triggered:
+        if v.action == "warn":
+            return v
+
+    return Verdict("allow", "", "No rules triggered")
+
+
 def load_guard_config(config_path: str) -> GuardConfig:
     """Load guard config from YAML file. Falls back to defaults if missing."""
     rules = dict(DEFAULT_RULES)
