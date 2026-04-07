@@ -5,6 +5,8 @@ import shutil
 
 from harness.lint_quality import check_quality
 
+FIXTURES = os.path.join(os.path.dirname(__file__), "fixtures")
+
 
 class TestCheckQuality(unittest.TestCase):
     def setUp(self):
@@ -125,6 +127,30 @@ class TestNamingConventions(unittest.TestCase):
         violations = check_quality(self.tmpdir, self.quality)
         naming_violations = [v for v in violations if v["rule"] == "naming_types"]
         self.assertEqual(naming_violations, [])
+
+
+class TestPerLayerForbiddenPatterns(unittest.TestCase):
+    def test_layer_rule_config_parsed(self):
+        """Verify per-layer rules are in the quality config."""
+        from harness.config import parse_quality
+        arch = os.path.join(FIXTURES, "sample_arch_with_perspectives.md")
+        quality = parse_quality(arch)
+        self.assertIn("layer_rules", quality)
+        self.assertIn(0, quality["layer_rules"])
+        self.assertIn("import logging", quality["layer_rules"][0]["forbidden_patterns"])
+
+    def test_check_quality_accepts_layers_param(self):
+        """check_quality works with and without layers parameter."""
+        from harness.lint_quality import check_quality
+        from harness.config import parse_quality
+        arch = os.path.join(FIXTURES, "sample_arch.md")
+        quality = parse_quality(arch)
+        # Should work without layers (backward compatible)
+        violations = check_quality(os.path.join(FIXTURES, "sample_project"), quality)
+        self.assertIsInstance(violations, list)
+        # Should also work with layers=None explicitly
+        violations = check_quality(os.path.join(FIXTURES, "sample_project"), quality, layers=None)
+        self.assertIsInstance(violations, list)
 
 
 if __name__ == "__main__":

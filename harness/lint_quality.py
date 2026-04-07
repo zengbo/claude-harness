@@ -49,12 +49,15 @@ _TYPE_PATTERNS = {
 def check_quality(
     project_root: str,
     quality: dict,
+    layers: dict | None = None,
 ) -> list:
     """Check code quality rules across all source files.
 
     Args:
         project_root: path to project root
         quality: parsed quality config dict from config.parse_quality()
+        layers: optional layers dict from config.parse_layers(), used for
+                per-layer forbidden_patterns checks
 
     Returns:
         List of violation dicts with keys: file, message, rule
@@ -120,6 +123,25 @@ def check_quality(
                             ),
                             "rule": "forbidden_patterns",
                         })
+
+            # Check per-layer forbidden patterns
+            layer_rules = quality.get("layer_rules", {})
+            if layers and layer_rules:
+                from harness.verify_action import _resolve_layer
+                file_layer = _resolve_layer(rel, layers)
+                if file_layer is not None and file_layer in layer_rules:
+                    layer_forbidden = layer_rules[file_layer].get("forbidden_patterns", [])
+                    for i, line_text in enumerate(lines, 1):
+                        for pattern in layer_forbidden:
+                            if pattern in line_text:
+                                violations.append({
+                                    "file": fpath,
+                                    "message": (
+                                        f"{rel}:{i}: forbidden in Layer {file_layer}: "
+                                        f"'{pattern}' found"
+                                    ),
+                                    "rule": "layer_forbidden_patterns",
+                                })
 
             # Check type naming conventions
             if naming_types == "PascalCase":
