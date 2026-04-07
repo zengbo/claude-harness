@@ -1,0 +1,24 @@
+# {{PROJECT_NAME}} Architecture
+
+## Layer Dependency Rules
+
+<!-- Layers define the dependency direction: higher layers can import lower, never reverse. -->
+<!-- Customize paths to match your project structure. -->
+
+{{LAYERS_BLOCK}}
+
+## Quality Rules
+
+```quality
+max_file_lines: 500
+forbidden_patterns: {{FORBIDDEN_PATTERNS}}
+naming_files: snake_case
+naming_types: PascalCase
+```
+
+## Notes
+
+- Higher layers may import lower layers. Never the reverse.
+- Top-layer (highest number) members cannot import each other.
+- Run `python3 harness/verify_action.py "your action"` before structural changes.
+- Run `python3 harness/validate.py` after any code change.

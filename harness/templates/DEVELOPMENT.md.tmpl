@@ -1,0 +1,32 @@
+# {{PROJECT_NAME}} Development
+
+## Build
+
+```build
+{{BUILD_CMD}}
+```
+
+## Test
+
+```test
+{{TEST_CMD}}
+```
+
+## Lint
+
+```lint
+{{LINT_CMD}}
+```
+
+## Validation
+
+Run the full pipeline:
+```bash
+python3 harness/validate.py
+```
+
+Run up to a specific stage:
+```bash
+python3 harness/validate.py --stage lint
+python3 harness/validate.py --stage test
+```

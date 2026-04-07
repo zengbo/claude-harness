@@ -1,0 +1,47 @@
+# {{PROJECT_NAME}}
+
+## Quick Links
+- [Architecture](docs/ARCHITECTURE.md) — layer rules, dependency constraints, quality standards
+- [Development](docs/DEVELOPMENT.md) — build, test, lint commands
+
+## Commands
+
+```
+python3 harness/validate.py              # Full validation pipeline
+python3 harness/validate.py --stage lint # Stop after lint
+python3 harness/verify_action.py "..."   # Pre-check an action
+python3 harness/memory.py query "..."    # Query relevant memories
+python3 harness/trace.py success ...     # Record success trace
+python3 harness/critic.py               # Analyze failure patterns
+```
+
+## Agent Work Rules
+
+### Task Complexity
+- Simple (one sentence, no "and"): do it directly
+- Medium (multiple files, clear direction): create Team, delegate to Coder
+- Complex (design decisions, trade-offs): Team + Coder (worktree) + Reviewer
+
+### Coordinator Principles
+- You are Team Lead — do NOT write business code for medium+ tasks
+- Workflow: read docs → break down tasks → assign teammates → accept results → record traces
+- Never "quickly fix this yourself" — delegate to a teammate
+
+### Before Writing Code
+- New file or cross-package import → run verify_action.py first
+- Read docs/ARCHITECTURE.md layer rules before structural changes
+
+### After Writing Code
+- Run: python3 harness/validate.py
+- Validation must pass before marking task complete
+
+### Traces and Memory
+- Task start: python3 harness/memory.py query "task keywords"
+- Task success: python3 harness/trace.py success --task "..." --steps "..."
+- Task failure: python3 harness/trace.py failure --task "..." --error "..."
+- Long tasks: python3 harness/trace.py checkpoint after each stage
+
+### Cross-Model Review
+- Trigger: core business logic, security code, broad refactors
+- python3 harness/review.py --diff "$(git diff)" --task "description"
+  → assign output as Reviewer teammate task (model="codex")
