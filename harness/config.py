@@ -55,12 +55,14 @@ def parse_quality(arch_md_path: str) -> dict[str, Any]:
     """Parse quality rules from ARCHITECTURE.md.
 
     Returns defaults if no ```quality``` block found.
+    Supports per-layer overrides via [layer:N] section headers.
     """
     defaults: dict[str, Any] = {
         "max_file_lines": 500,
         "forbidden_patterns": [],
         "naming_files": None,
         "naming_types": None,
+        "layer_rules": {},
     }
 
     text = _read_file(arch_md_path)
@@ -69,24 +71,81 @@ def parse_quality(arch_md_path: str) -> dict[str, Any]:
         return defaults
 
     result = dict(defaults)
+    result["layer_rules"] = {}
+    current_layer: int | None = None
+
     for line in block.splitlines():
         line = line.strip()
-        if not line or ":" not in line:
+        if not line:
             continue
+
+        # Check for [layer:N] section header
+        layer_m = re.match(r"^\[layer:(\d+)\]$", line)
+        if layer_m:
+            current_layer = int(layer_m.group(1))
+            if current_layer not in result["layer_rules"]:
+                result["layer_rules"][current_layer] = {}
+            continue
+
+        if ":" not in line:
+            continue
+
         key, _, value = line.partition(":")
         key = key.strip()
         value = value.strip()
 
-        if key == "max_file_lines":
-            result["max_file_lines"] = int(value)
-        elif key == "forbidden_patterns":
-            result["forbidden_patterns"] = [
-                p.strip() for p in value.split(",") if p.strip()
-            ]
-        elif key.startswith("naming_"):
-            result[key] = value
+        if current_layer is not None:
+            # Parse into current layer's rules
+            layer_dict = result["layer_rules"][current_layer]
+            if key == "forbidden_patterns":
+                layer_dict["forbidden_patterns"] = [
+                    p.strip() for p in value.split(",") if p.strip()
+                ]
+        else:
+            # Global rules
+            if key == "max_file_lines":
+                result["max_file_lines"] = int(value)
+            elif key == "forbidden_patterns":
+                result["forbidden_patterns"] = [
+                    p.strip() for p in value.split(",") if p.strip()
+                ]
+            elif key.startswith("naming_"):
+                result[key] = value
 
     return result
+
+
+def parse_review_perspectives(arch_md_path: str) -> dict[str, str]:
+    """Parse review perspectives from ARCHITECTURE.md.
+
+    Returns configured perspectives or 4 defaults if block missing.
+    Format inside ```review_perspectives block:
+        name: checklist_description
+    """
+    defaults: dict[str, str] = {
+        "security": "Authentication, authorization, input validation, secret exposure, injection attacks",
+        "performance": "Algorithm complexity, N+1 queries, unnecessary allocations, caching opportunities",
+        "quality": "Logic correctness, edge cases, error handling, naming clarity, code duplication",
+        "accessibility": "ARIA labels, keyboard navigation, color contrast, screen reader support",
+    }
+
+    text = _read_file(arch_md_path)
+    block = _extract_block(text, "review_perspectives")
+    if block is None:
+        return defaults
+
+    result: dict[str, str] = {}
+    for line in block.splitlines():
+        line = line.strip()
+        if not line or ":" not in line:
+            continue
+        name, _, checklist = line.partition(":")
+        name = name.strip()
+        checklist = checklist.strip()
+        if name:
+            result[name] = checklist
+
+    return result if result else defaults
 
 
 def parse_commands(dev_md_path: str) -> dict[str, str | None]:

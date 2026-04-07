@@ -116,8 +116,16 @@ def cmd_review(args):
     from harness.review import generate_review_prompt
 
     arch = args.arch or "docs/ARCHITECTURE.md"
-    prompt = generate_review_prompt(args.diff, args.task, arch)
-    print(prompt)
+    perspective = getattr(args, "perspective", None)
+    result = generate_review_prompt(args.diff, args.task, arch, perspective=perspective)
+    if isinstance(result, dict):
+        for name, prompt in result.items():
+            print(f"{'=' * 60}")
+            print(f"## {name.upper()} PERSPECTIVE")
+            print(f"{'=' * 60}")
+            print(prompt)
+    else:
+        print(result)
     return 0
 
 
@@ -284,6 +292,8 @@ def build_parser():
     p.add_argument("--diff", required=True, help="Diff content")
     p.add_argument("--task", required=True, help="Task description")
     p.add_argument("--arch", help="Path to ARCHITECTURE.md")
+    p.add_argument("--perspective", default=None,
+                   help='Review perspective: "all" for all perspectives, or a name like "security"')
 
     # --- trace ---
     p = sub.add_parser("trace", help="Record execution traces")

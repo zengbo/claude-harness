@@ -29,23 +29,8 @@ def _read_arch_rules(arch_md_path: str) -> str:
     return "\n".join(sections) if sections else text
 
 
-def generate_review_prompt(
-    diff: str,
-    task: str,
-    arch_md_path: str,
-) -> str:
-    """Generate a structured review prompt.
-
-    Args:
-        diff: git diff content
-        task: task description / context
-        arch_md_path: path to ARCHITECTURE.md
-
-    Returns:
-        Formatted review prompt string
-    """
-    arch_rules = _read_arch_rules(arch_md_path)
-
+def _format_single_prompt(diff: str, task: str, arch_rules: str) -> str:
+    """Format the default combined review prompt."""
     return f"""Review the following code changes.
 
 ## Task Context
@@ -78,6 +63,71 @@ Respond with:
 
 Focus on issues that linters and tests cannot catch. Do not flag style preferences.
 """
+
+
+def _format_perspective_prompt(diff: str, task: str, perspective: str, checklist: str) -> str:
+    """Format a focused review prompt for a single perspective."""
+    return f"""Review the following code changes from a {perspective} perspective.
+
+## Task Context
+{task}
+
+## {perspective.title()} Checklist
+Focus on: {checklist}
+
+## Changes
+```diff
+{diff}
+```
+
+## Output
+Respond with:
+- **PASS** if no substantive {perspective} issues found
+- **NEEDS_CHANGE** with a list of {perspective} issues, each containing:
+  - File and line reference
+  - What the problem is
+  - Why it matters
+  - Suggested fix
+
+Focus only on {perspective} concerns. Do not flag issues outside this perspective.
+"""
+
+
+def generate_review_prompt(
+    diff: str,
+    task: str,
+    arch_md_path: str,
+    perspective: str | None = None,
+) -> "str | dict[str, str]":
+    """Generate a structured review prompt.
+
+    Args:
+        diff: git diff content
+        task: task description / context
+        arch_md_path: path to ARCHITECTURE.md
+        perspective: None for combined prompt, "all" for dict of per-perspective
+                     prompts, or a specific perspective name like "security"
+
+    Returns:
+        str if perspective is None or a specific name,
+        dict[str, str] if perspective="all"
+    """
+    if perspective is None:
+        arch_rules = _read_arch_rules(arch_md_path)
+        return _format_single_prompt(diff, task, arch_rules)
+
+    from harness.config import parse_review_perspectives
+    perspectives = parse_review_perspectives(arch_md_path)
+
+    if perspective == "all":
+        return {
+            name: _format_perspective_prompt(diff, task, name, checklist)
+            for name, checklist in perspectives.items()
+        }
+
+    # Single named perspective
+    checklist = perspectives.get(perspective, f"Review {perspective} concerns")
+    return _format_perspective_prompt(diff, task, perspective, checklist)
 
 
 def main() -> int:

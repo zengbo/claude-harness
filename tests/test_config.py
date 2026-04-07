@@ -1,7 +1,7 @@
 import unittest
 import os
 
-from harness.config import parse_layers, parse_quality, parse_commands
+from harness.config import parse_layers, parse_quality, parse_commands, parse_review_perspectives
 
 FIXTURES = os.path.join(os.path.dirname(__file__), "fixtures")
 
@@ -75,6 +75,37 @@ class TestParseCommands(unittest.TestCase):
     def test_missing_block_returns_none(self):
         cmds = parse_commands(os.path.join(FIXTURES, "sample_arch.md"))
         self.assertIsNone(cmds["build"])
+
+
+class TestParseReviewPerspectives(unittest.TestCase):
+    def test_parses_perspectives(self):
+        arch = os.path.join(FIXTURES, "sample_arch_with_perspectives.md")
+        perspectives = parse_review_perspectives(arch)
+        self.assertEqual(len(perspectives), 3)
+        self.assertIn("security", perspectives)
+        self.assertIn("performance", perspectives)
+        self.assertIn("Authentication", perspectives["security"])
+
+    def test_missing_block_returns_defaults(self):
+        perspectives = parse_review_perspectives(os.path.join(FIXTURES, "sample_arch.md"))
+        self.assertEqual(len(perspectives), 4)
+        self.assertIn("security", perspectives)
+        self.assertIn("accessibility", perspectives)
+
+
+class TestParseQualityLayerRules(unittest.TestCase):
+    def test_per_layer_forbidden_patterns(self):
+        arch = os.path.join(FIXTURES, "sample_arch_with_perspectives.md")
+        quality = parse_quality(arch)
+        self.assertIn("layer_rules", quality)
+        self.assertIn(0, quality["layer_rules"])
+        self.assertIn("import logging", quality["layer_rules"][0]["forbidden_patterns"])
+        self.assertIn(3, quality["layer_rules"])
+        self.assertIn("sys.exit", quality["layer_rules"][3]["forbidden_patterns"])
+
+    def test_no_layer_rules_returns_empty(self):
+        quality = parse_quality(os.path.join(FIXTURES, "sample_arch.md"))
+        self.assertEqual(quality.get("layer_rules", {}), {})
 
 
 if __name__ == "__main__":

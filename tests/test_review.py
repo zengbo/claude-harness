@@ -5,6 +5,8 @@ import shutil
 
 from harness.review import generate_review_prompt
 
+FIXTURES = os.path.join(os.path.dirname(__file__), "fixtures")
+
 
 class TestGenerateReviewPrompt(unittest.TestCase):
     def setUp(self):
@@ -86,6 +88,32 @@ max_file_lines: 500
         )
         self.assertIsInstance(prompt, str)
         self.assertIn("+ code", prompt)
+
+
+class TestReviewPerspectives(unittest.TestCase):
+    def setUp(self):
+        self.arch = os.path.join(FIXTURES, "sample_arch_with_perspectives.md")
+
+    def test_single_perspective(self):
+        from harness.review import generate_review_prompt
+        prompt = generate_review_prompt("diff here", "fix auth", self.arch, perspective="security")
+        self.assertIsInstance(prompt, str)
+        self.assertIn("security", prompt.lower())
+        self.assertIn("diff here", prompt)
+
+    def test_all_perspectives(self):
+        from harness.review import generate_review_prompt
+        result = generate_review_prompt("diff here", "refactor", self.arch, perspective="all")
+        self.assertIsInstance(result, dict)
+        self.assertIn("security", result)
+        self.assertIn("performance", result)
+        self.assertIn("diff here", result["security"])
+
+    def test_no_perspective_backward_compatible(self):
+        from harness.review import generate_review_prompt
+        prompt = generate_review_prompt("diff here", "fix bug", self.arch)
+        self.assertIsInstance(prompt, str)
+        self.assertIn("diff here", prompt)
 
 
 if __name__ == "__main__":
