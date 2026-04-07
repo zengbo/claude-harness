@@ -290,13 +290,22 @@ secret_patterns:
     if os.path.exists(settings_path):
         existing_text = Path(settings_path).read_text(encoding="utf-8")
         existing = _json.loads(existing_text)
+        needs_update = False
         if "hooks" not in existing:
+            needs_update = True
+        elif "PreToolUse" in existing.get("hooks", {}):
+            # Fix old format: {matcher, command} → {matcher, hooks: [{type, command}]}
+            for entry in existing["hooks"]["PreToolUse"]:
+                if "command" in entry and "hooks" not in entry:
+                    needs_update = True
+                    break
+        if needs_update:
             existing.update(generate_hooks_config())
             Path(settings_path).write_text(
                 _json.dumps(existing, indent=2, ensure_ascii=False),
                 encoding="utf-8",
             )
-            created.append(settings_path + " (merged)")
+            created.append(settings_path + " (updated)")
     else:
         hooks_cfg = generate_hooks_config()
         if _write_if_not_exists(settings_path, _json.dumps(hooks_cfg, indent=2, ensure_ascii=False)):
@@ -570,13 +579,22 @@ secret_patterns:
     if os.path.exists(settings_path):
         existing_text = Path(settings_path).read_text(encoding="utf-8")
         existing = _json.loads(existing_text)
+        needs_update = False
         if "hooks" not in existing:
+            needs_update = True
+        elif "PreToolUse" in existing.get("hooks", {}):
+            # Fix old format: {matcher, command} → {matcher, hooks: [{type, command}]}
+            for entry in existing["hooks"]["PreToolUse"]:
+                if "command" in entry and "hooks" not in entry:
+                    needs_update = True
+                    break
+        if needs_update:
             existing.update(generate_hooks_config())
             Path(settings_path).write_text(
                 _json.dumps(existing, indent=2, ensure_ascii=False),
                 encoding="utf-8",
             )
-            created.append(settings_path + " (merged)")
+            created.append(settings_path + " (updated)")
     else:
         hooks_cfg = generate_hooks_config()
         if _write_if_not_exists(settings_path, _json.dumps(hooks_cfg, indent=2, ensure_ascii=False)):
