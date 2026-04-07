@@ -32,9 +32,10 @@ def cmd_scan(args):
 
 
 def cmd_score(args):
-    from harness.creator import score_project
+    from harness.creator import scan_project, score_project
 
-    result = score_project(args.project_root)
+    scan = scan_project(args.project_root)
+    result = score_project(scan, args.project_root)
     print(f"  Total: {result['total']}/100")
     for dim, val in result["dimensions"].items():
         print(f"  {dim}: {val}")
