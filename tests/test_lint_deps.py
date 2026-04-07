@@ -3,6 +3,7 @@ import os
 
 from harness.lint_deps import parse_imports_go, parse_imports_python, parse_imports_ts
 from harness.lint_deps import parse_imports_php
+from harness.lint_deps import parse_imports_rust
 from harness.lint_deps import check_layer_violations
 
 FIXTURES = os.path.join(os.path.dirname(__file__), "fixtures")
@@ -132,6 +133,39 @@ class TestPhpImportParser(unittest.TestCase):
     def test_no_imports(self):
         code = "<?php\necho 'hello';"
         self.assertEqual(parse_imports_php(code), [])
+
+
+class TestRustImportParser(unittest.TestCase):
+    def test_use_crate(self):
+        code = "use crate::types::User;"
+        self.assertEqual(parse_imports_rust(code), ["crate::types::User"])
+
+    def test_use_crate_glob(self):
+        code = "use crate::config::*;"
+        self.assertEqual(parse_imports_rust(code), ["crate::config"])
+
+    def test_use_crate_grouped(self):
+        code = "use crate::models::{User, Post};"
+        result = parse_imports_rust(code)
+        self.assertEqual(result, [
+            "crate::models::User",
+            "crate::models::Post",
+        ])
+
+    def test_mod_declaration(self):
+        code = "mod types;\nmod config;"
+        result = parse_imports_rust(code)
+        self.assertEqual(result, ["types", "config"])
+
+    def test_external_crate_ignored(self):
+        code = "use std::collections::HashMap;\nuse serde::Deserialize;"
+        # External crates returned — caller filters
+        result = parse_imports_rust(code)
+        self.assertIn("std::collections::HashMap", result)
+
+    def test_no_imports(self):
+        code = 'fn main() { println!("hello"); }'
+        self.assertEqual(parse_imports_rust(code), [])
 
 
 class TestCheckLayerViolations(unittest.TestCase):
