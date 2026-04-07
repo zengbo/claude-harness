@@ -77,30 +77,35 @@ def generate_hooks_config() -> dict:
             "PreToolUse": [
                 {
                     "matcher": "Bash",
-                    "hooks": [{"type": "command", "command": "python3 -m harness.hooks bash"}],
+                    "hooks": [{"type": "command", "command": "harness hooks bash"}],
                 },
                 {
                     "matcher": "Write",
-                    "hooks": [{"type": "command", "command": "python3 -m harness.hooks write"}],
+                    "hooks": [{"type": "command", "command": "harness hooks write"}],
                 },
                 {
                     "matcher": "Edit",
-                    "hooks": [{"type": "command", "command": "python3 -m harness.hooks edit"}],
+                    "hooks": [{"type": "command", "command": "harness hooks edit"}],
                 },
             ]
         }
     }
 
 
-def main():
-    """CLI entry point for Claude Code PreToolUse hooks."""
+def main(tool_type: str | None = None) -> int:
+    """CLI entry point for Claude Code PreToolUse hooks.
+
+    Args:
+        tool_type: "bash", "write", or "edit". If None, reads from sys.argv.
+    """
     from harness.guard import evaluate, load_guard_config
 
-    if len(sys.argv) < 2:
-        print("[hooks] Usage: hooks.py <bash|write|edit>", file=sys.stderr)
-        sys.exit(1)
+    if tool_type is None:
+        if len(sys.argv) < 2:
+            print("[hooks] Usage: harness hooks <bash|write|edit>", file=sys.stderr)
+            return 1
+        tool_type = sys.argv[1]
 
-    tool_type = sys.argv[1]
     tool_json = sys.stdin.read()
 
     project_root = os.getcwd()
@@ -108,7 +113,7 @@ def main():
 
     if ctx is None:
         # Invalid JSON — let the tool proceed (fail safe)
-        sys.exit(0)
+        return 0
 
     config_path = os.path.join(project_root, ".harness", "guard.yaml")
     cfg = load_guard_config(config_path)
@@ -117,13 +122,12 @@ def main():
 
     if verdict.action == "deny":
         print(f"[guard] DENIED ({verdict.rule_id}): {verdict.message}", file=sys.stderr)
-        sys.exit(2)
+        return 2
     elif verdict.action == "warn":
         print(f"[guard] WARNING ({verdict.rule_id}): {verdict.message}", file=sys.stderr)
-        sys.exit(0)
-    else:
-        sys.exit(0)
+        return 0
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

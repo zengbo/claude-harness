@@ -46,4 +46,4 @@ class TestGenerateHooksConfig(unittest.TestCase):
             self.assertIn("hooks", entry)
             self.assertIsInstance(entry["hooks"], list)
             self.assertEqual(entry["hooks"][0]["type"], "command")
-            self.assertIn("harness.hooks", entry["hooks"][0]["command"])
+            self.assertIn("harness hooks", entry["hooks"][0]["command"])

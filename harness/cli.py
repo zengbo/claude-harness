@@ -173,6 +173,11 @@ def cmd_memory(args):
     return 0
 
 
+def cmd_hooks(args):
+    from harness.hooks import main as hooks_main
+    return hooks_main(tool_type=args.tool_type)
+
+
 def cmd_guard(args):
     from harness.guard import ActionContext, evaluate, load_guard_config
     import os
@@ -364,6 +369,10 @@ def build_parser():
 
     gsub.add_parser("show", help="Show current guard config from .harness/guard.yaml")
 
+    # --- hooks ---
+    p = sub.add_parser("hooks", help="Claude Code PreToolUse hook entry point")
+    p.add_argument("tool_type", choices=["bash", "write", "edit"])
+
     return parser
 
 
@@ -385,6 +394,7 @@ def main():
         "memory": cmd_memory,
         "critic": cmd_critic,
         "guard": cmd_guard,
+        "hooks": cmd_hooks,
     }
 
     handler = handlers[args.command]
