@@ -135,14 +135,97 @@ RULES: dict[str, Callable[[ActionContext, GuardConfig], Verdict | None]] = {
     "R08_secret_pattern": _check_R08_secret_pattern,
 }
 
+# Import patterns for R02: (pattern, group_index_for_import_path)
+_IMPORT_PATTERNS = [
+    # Go: import "internal/services/user"  or  import ("pkg1"\n"pkg2")
+    (re.compile(r'import\s+"([^"]+)"'), 1),
+    # Python: from internal.services import user_service
+    (re.compile(r'from\s+([\w.]+)\s+import'), 1),
+    # JS/TS: import ... from 'path'  or  import ... from "path"
+    (re.compile(r'from\s+["\']([^"\']+)["\']'), 1),
+    # JS/TS: require('path')
+    (re.compile(r'require\(["\']([^"\']+)["\']\)'), 1),
+]
 
-def evaluate(ctx: ActionContext, cfg: GuardConfig) -> Verdict:
+
+def _check_R01_layer_violation(
+    ctx: ActionContext, cfg: GuardConfig, arch_md_path: str | None,
+) -> Verdict | None:
+    """R01: file creation in a known layer — informational, always pass-through.
+
+    R01's value is that it _could_ be extended to enforce creation rules.
+    For now it returns None unconditionally.
+    """
+    if ctx.action_type not in ("write", "edit") or not ctx.file_path:
+        return None
+    return None  # pass-through — real enforcement is R02
+
+
+def _check_R02_import_violation(
+    ctx: ActionContext, cfg: GuardConfig, arch_md_path: str | None,
+) -> Verdict | None:
+    """R02: deny imports that violate layer dependency rules."""
+    if arch_md_path is None:
+        return None
+    if ctx.action_type not in ("write", "edit") or not ctx.content or not ctx.file_path:
+        return None
+
+    # Lazy import to avoid circular dependency (verify_action does NOT import guard)
+    from harness.config import parse_layers
+    from harness.verify_action import _resolve_layer, _resolve_import_layer
+
+    layers = parse_layers(arch_md_path)
+    if not layers:
+        return None
+
+    src_layer = _resolve_layer(ctx.file_path, layers)
+    if src_layer is None:
+        return None  # source file not in any layer — no constraint
+
+    for pattern, group_idx in _IMPORT_PATTERNS:
+        for m in pattern.finditer(ctx.content):
+            import_path = m.group(group_idx)
+            tgt_layer = _resolve_import_layer(import_path, layers)
+            if tgt_layer is None:
+                continue
+            if tgt_layer > src_layer:
+                return Verdict(
+                    "deny",
+                    "R02_import_violation",
+                    (
+                        f"{ctx.file_path!r} is Layer {src_layer} "
+                        f"({layers[src_layer]['label']}), "
+                        f"cannot import {import_path!r} which is Layer {tgt_layer} "
+                        f"({layers[tgt_layer]['label']})"
+                    ),
+                )
+    return None
+
+
+# Architecture-aware rules receive arch_md_path as a third argument
+ARCH_RULES: dict[
+    str,
+    Callable[[ActionContext, GuardConfig, str | None], Verdict | None],
+] = {
+    "R01_layer_violation": _check_R01_layer_violation,
+    "R02_import_violation": _check_R02_import_violation,
+}
+
+
+def evaluate(ctx: ActionContext, cfg: GuardConfig, arch_md_path: str | None = None) -> Verdict:
     """Run all enabled rules, return merged verdict. deny > warn > allow."""
     triggered: list[Verdict] = []
     for rule_id, fn in RULES.items():
         if cfg.rules.get(rule_id) is False:
             continue
         result = fn(ctx, cfg)
+        if result is not None:
+            triggered.append(result)
+
+    for rule_id, fn in ARCH_RULES.items():
+        if cfg.rules.get(rule_id) is False:
+            continue
+        result = fn(ctx, cfg, arch_md_path)
         if result is not None:
             triggered.append(result)
 

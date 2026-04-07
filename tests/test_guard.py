@@ -216,6 +216,38 @@ class TestR08SecretPattern(unittest.TestCase):
         self.assertEqual(v.action, "allow")
 
 
+class TestR02ImportViolation(unittest.TestCase):
+    def setUp(self):
+        self.cfg = _default_config()
+        self.arch = os.path.join(FIXTURES, "sample_arch.md")
+
+    def test_import_higher_layer_denied(self):
+        # File in layer 0 (internal/types/) imports from layer 3 (internal/services/)
+        content = 'import "internal/services/user"'
+        ctx = ActionContext("write", None, "internal/types/user.go", content, "/tmp")
+        v = evaluate(ctx, self.cfg, arch_md_path=self.arch)
+        self.assertEqual(v.action, "deny")
+        self.assertEqual(v.rule_id, "R02_import_violation")
+
+    def test_import_lower_layer_ok(self):
+        content = 'import "internal/types/user"'
+        ctx = ActionContext("write", None, "internal/services/svc.go", content, "/tmp")
+        v = evaluate(ctx, self.cfg, arch_md_path=self.arch)
+        self.assertEqual(v.action, "allow")
+
+    def test_no_arch_skips_r02(self):
+        content = 'import "internal/services/user"'
+        ctx = ActionContext("write", None, "internal/types/user.go", content, "/tmp")
+        v = evaluate(ctx, self.cfg)  # no arch_md_path
+        self.assertEqual(v.action, "allow")
+
+    def test_python_import_violation(self):
+        content = 'from internal.services import user_service'
+        ctx = ActionContext("write", None, "internal/types/user.py", content, "/tmp")
+        v = evaluate(ctx, self.cfg, arch_md_path=self.arch)
+        self.assertEqual(v.action, "deny")
+
+
 class TestRuleToggling(unittest.TestCase):
     def test_disabled_r07_skips_sudo(self):
         cfg = _default_config()
