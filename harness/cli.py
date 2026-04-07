@@ -23,11 +23,11 @@ def cmd_init(args):
 
 
 def cmd_setup(args):
-    from harness.creator import setup_project, scan_project, score_project
+    from harness.creator import setup_project
     import os
 
     root = os.path.abspath(args.project_root)
-    print(f"[harness] Scanning {root} ...")
+    print(f"[harness] Setting up {root} ...")
     created = setup_project(root)
 
     if created:
@@ -36,16 +36,14 @@ def cmd_setup(args):
             rel = os.path.relpath(p, root) if not p.endswith("(appended)") else p
             print(f"  {rel}")
     else:
-        print("\nAll harness files already exist. Nothing to generate.")
+        print("\nAll scaffold files already exist.")
 
-    scan = scan_project(root)
-    result = score_project(scan, root)
-    print(f"\n[harness] Score: {result['total']}/100")
-    print("\nNext steps:")
-    print("  1. Review docs/ARCHITECTURE.md — adjust layer rules to match your project")
-    print("  2. Review docs/DEVELOPMENT.md — verify build/test/lint commands")
-    print("  3. Review CLAUDE.md — customize agent work rules")
-    print("  4. Run: harness validate .")
+    print("\n[harness] Scaffold ready. Now generate docs with Claude Code:")
+    print('  In Claude Code, say: "Use the harness-setup agent to generate docs"')
+    print("  It will analyze your codebase and create:")
+    print("    - CLAUDE.md")
+    print("    - docs/ARCHITECTURE.md")
+    print("    - docs/DEVELOPMENT.md")
     return 0
 
 

@@ -10,12 +10,12 @@ You are a coding agent working within a Harness-managed project.
 ## Workflow
 1. Pre-check: before creating a new file or adding a cross-package import, run:
    ```
-   python3 harness/verify_action.py "<describe your action>"
+   harness verify "<describe your action>"
    ```
 2. Implement the changes
 3. Post-check: after coding, run the validation pipeline:
    ```
-   python3 harness/validate.py
+   harness validate .
    ```
 4. If validation fails, fix the issues and re-run
 5. Validation must pass before marking your task as complete
