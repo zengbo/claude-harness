@@ -4,6 +4,7 @@ import os
 from harness.lint_deps import parse_imports_go, parse_imports_python, parse_imports_ts
 from harness.lint_deps import parse_imports_php
 from harness.lint_deps import parse_imports_rust
+from harness.lint_deps import parse_imports_java
 from harness.lint_deps import check_layer_violations
 
 FIXTURES = os.path.join(os.path.dirname(__file__), "fixtures")
@@ -166,6 +167,35 @@ class TestRustImportParser(unittest.TestCase):
     def test_no_imports(self):
         code = 'fn main() { println!("hello"); }'
         self.assertEqual(parse_imports_rust(code), [])
+
+
+class TestJavaImportParser(unittest.TestCase):
+    def test_single_import(self):
+        code = "import com.myapp.models.User;"
+        self.assertEqual(parse_imports_java(code), ["com.myapp.models.User"])
+
+    def test_static_import(self):
+        code = "import static com.myapp.utils.Helper.format;"
+        self.assertEqual(parse_imports_java(code), ["com.myapp.utils.Helper.format"])
+
+    def test_wildcard_import(self):
+        code = "import com.myapp.models.*;"
+        self.assertEqual(parse_imports_java(code), ["com.myapp.models"])
+
+    def test_multiple_imports(self):
+        code = (
+            "import com.myapp.models.User;\n"
+            "import com.myapp.config.Settings;\n"
+            "import java.util.List;\n"
+        )
+        result = parse_imports_java(code)
+        self.assertEqual(len(result), 3)
+        self.assertIn("com.myapp.models.User", result)
+        self.assertIn("java.util.List", result)
+
+    def test_no_imports(self):
+        code = "package com.myapp;\n\npublic class Main {}"
+        self.assertEqual(parse_imports_java(code), [])
 
 
 class TestCheckLayerViolations(unittest.TestCase):

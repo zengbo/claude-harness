@@ -153,6 +153,30 @@ def parse_imports_rust(code: str) -> list[str]:
     return imports
 
 
+def parse_imports_java(code: str) -> list[str]:
+    """Extract import statements from Java source code.
+
+    Handles: import x.y.z, import static x.y.z, import x.y.*.
+    """
+    imports: list[str] = []
+
+    for line in code.splitlines():
+        line = line.strip()
+
+        # Wildcard: import com.myapp.models.*
+        m = re.match(r"import\s+(?:static\s+)?([\w.]+)\.\*;", line)
+        if m:
+            imports.append(m.group(1))
+            continue
+
+        # Standard: import com.myapp.models.User
+        m = re.match(r"import\s+(?:static\s+)?([\w.]+);", line)
+        if m:
+            imports.append(m.group(1))
+
+    return imports
+
+
 # Map file extensions to parser functions
 PARSERS = {
     ".go": parse_imports_go,
@@ -163,6 +187,7 @@ PARSERS = {
     ".jsx": parse_imports_ts,
     ".php": parse_imports_php,
     ".rs": parse_imports_rust,
+    ".java": parse_imports_java,
 }
 
 
