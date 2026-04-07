@@ -7,41 +7,76 @@
 ## Commands
 
 ```
-python3 harness/validate.py              # Full validation pipeline
-python3 harness/validate.py --stage lint # Stop after lint
-python3 harness/verify_action.py "..."   # Pre-check an action
-python3 harness/memory.py query "..."    # Query relevant memories
-python3 harness/trace.py success ...     # Record success trace
-python3 harness/critic.py               # Analyze failure patterns
+harness validate .              # Full validation pipeline
+harness validate . --stage lint # Stop after lint
+harness verify "..."            # Pre-check an action
+harness memory query "..."      # Query relevant memories
+harness trace success ...       # Record success trace
+harness critic                  # Analyze failure patterns
 ```
 
-## Agent Work Rules
+---
 
-### Task Complexity
-- Simple (one sentence, no "and"): do it directly
-- Medium (multiple files, clear direction): create Team, delegate to Coder
-- Complex (design decisions, trade-offs): Team + Coder (worktree) + Reviewer
+## MANDATORY Rules — You MUST Follow These
 
-### Coordinator Principles
-- You are Team Lead — do NOT write business code for medium+ tasks
-- Workflow: read docs → break down tasks → assign teammates → accept results → record traces
-- Never "quickly fix this yourself" — delegate to a teammate
+**These rules are non-negotiable. Violating any of them is a task failure.**
 
-### Before Writing Code
-- New file or cross-package import → run verify_action.py first
-- Read docs/ARCHITECTURE.md layer rules before structural changes
+### Rule 1: You MUST Verify Your Own Work
 
-### After Writing Code
-- Run: python3 harness/validate.py
-- Validation must pass before marking task complete
+**NEVER** tell the user "you'll want to run..." or "you should verify...". That is YOUR job.
 
-### Traces and Memory
-- Task start: python3 harness/memory.py query "task keywords"
-- Task success: python3 harness/trace.py success --task "..." --steps "..."
-- Task failure: python3 harness/trace.py failure --task "..." --error "..."
-- Long tasks: python3 harness/trace.py checkpoint after each stage
+After ANY code change — no matter how small — you MUST run the full validation:
 
-### Cross-Model Review
-- Trigger: core business logic, security code, broad refactors
-- python3 harness/review.py --diff "$(git diff)" --task "description"
-  → assign output as Reviewer teammate task (model="codex")
+```
+harness validate .
+```
+
+If validation fails, fix the issues and re-run. Do NOT mark the task as done until validation passes.
+
+If a command requires user interaction (e.g., password prompt), explain what you need and ask the user to run it. But do NOT skip the verification step entirely.
+
+### Rule 2: You MUST Run Downstream Effects
+
+Changing a config file (package.json, composer.json, Cargo.toml, go.mod, pyproject.toml, etc.) is NOT the end of the task. You MUST also:
+
+1. Run the dependency resolution command (npm install, composer update, cargo build, go mod tidy, etc.)
+2. Run the build
+3. Run the tests
+4. Fix any failures
+
+Only after all of these pass is the task complete.
+
+### Rule 3: Structural Changes Require Pre-Check
+
+Before creating a new file or adding a cross-package import:
+
+```
+harness verify "<describe your action>"
+```
+
+Before structural changes, read `docs/ARCHITECTURE.md` layer rules first.
+
+### Rule 4: Task Delegation
+
+- Simple task (one sentence, no "and"): do it directly
+- Medium task (multiple files, clear direction): create Team, delegate to Coder teammate
+- Complex task (design decisions, trade-offs): Team + Coder (worktree) + Reviewer
+
+For medium+ tasks: you are Team Lead — do NOT write business code yourself. Delegate to teammates.
+
+### Rule 5: Traces
+
+- Task start: `harness memory query "task keywords"`
+- Task success: `harness trace success --task "..." --steps "..."`
+- Task failure: `harness trace failure --task "..." --error "..."`
+- Long tasks: `harness trace checkpoint` after each stage
+
+### Rule 6: Cross-Model Review
+
+Trigger for: core business logic, security code, broad refactors, framework upgrades.
+
+```
+harness review --diff "$(git diff)" --task "description"
+```
+
+Assign the output as a Reviewer teammate task.
