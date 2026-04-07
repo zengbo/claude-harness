@@ -2,6 +2,7 @@ import unittest
 import os
 
 from harness.lint_deps import parse_imports_go, parse_imports_python, parse_imports_ts
+from harness.lint_deps import parse_imports_php
 from harness.lint_deps import check_layer_violations
 
 FIXTURES = os.path.join(os.path.dirname(__file__), "fixtures")
@@ -99,6 +100,38 @@ const helper = require('../utils/helper');"""
     def test_no_imports(self):
         code = "const x = 1;\nconsole.log(x);"
         self.assertEqual(parse_imports_ts(code), [])
+
+
+class TestPhpImportParser(unittest.TestCase):
+    def test_use_statement(self):
+        code = "use App\\Models\\User;"
+        self.assertEqual(parse_imports_php(code), ["App\\Models\\User"])
+
+    def test_use_with_alias(self):
+        code = "use App\\Config\\Settings as Config;"
+        self.assertEqual(parse_imports_php(code), ["App\\Config\\Settings"])
+
+    def test_grouped_use(self):
+        code = "use App\\Models\\{User, Post, Comment};"
+        result = parse_imports_php(code)
+        self.assertEqual(result, [
+            "App\\Models\\User",
+            "App\\Models\\Post",
+            "App\\Models\\Comment",
+        ])
+
+    def test_namespace_declaration_ignored(self):
+        code = "namespace App\\Services;\n\nuse App\\Models\\User;"
+        result = parse_imports_php(code)
+        self.assertEqual(result, ["App\\Models\\User"])
+
+    def test_function_use_ignored(self):
+        code = "$fn = function() use ($var) {};"
+        self.assertEqual(parse_imports_php(code), [])
+
+    def test_no_imports(self):
+        code = "<?php\necho 'hello';"
+        self.assertEqual(parse_imports_php(code), [])
 
 
 class TestCheckLayerViolations(unittest.TestCase):

@@ -76,6 +76,43 @@ def parse_imports_ts(code: str) -> list[str]:
     return imports
 
 
+def parse_imports_php(code: str) -> list[str]:
+    """Extract use statements from PHP source code.
+
+    Handles: use X\\Y\\Z, use X\\Y as Alias, use X\\Y\\{A, B, C}.
+    Ignores: namespace declarations, closure use ($var).
+    """
+    imports: list[str] = []
+
+    for line in code.splitlines():
+        line = line.strip()
+
+        # Skip namespace declarations
+        if line.startswith("namespace "):
+            continue
+
+        # Grouped use: use App\Models\{User, Post}
+        m = re.match(
+            r"use\s+([\w\\]+)\\{([^}]+)}", line
+        )
+        if m:
+            base = m.group(1)
+            for name in m.group(2).split(","):
+                name = name.strip()
+                if name:
+                    imports.append(f"{base}\\{name}")
+            continue
+
+        # Single use: use App\Models\User or use App\Models\User as Alias
+        m = re.match(
+            r"use\s+([\w\\]{2,}[\w])\s*(?:as\s+\w+)?;", line
+        )
+        if m:
+            imports.append(m.group(1))
+
+    return imports
+
+
 # Map file extensions to parser functions
 PARSERS = {
     ".go": parse_imports_go,
@@ -84,6 +121,7 @@ PARSERS = {
     ".tsx": parse_imports_ts,
     ".js": parse_imports_ts,
     ".jsx": parse_imports_ts,
+    ".php": parse_imports_php,
 }
 
 
