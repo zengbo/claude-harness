@@ -165,5 +165,52 @@ class TestScoreProject(unittest.TestCase):
         self.assertLessEqual(self.score["validation_pipeline"], 5)
 
 
+class TestSetupProjectV2(unittest.TestCase):
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp()
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir)
+
+    def test_setup_copies_skills(self):
+        from harness.creator import setup_project
+        setup_project(self.tmpdir)
+        skills_dir = os.path.join(self.tmpdir, ".claude", "skills")
+        self.assertTrue(os.path.isdir(skills_dir))
+        expected = ["harness-init.md", "harness-do.md", "harness-validate.md",
+                    "harness-review.md", "harness-critic.md"]
+        for skill in expected:
+            self.assertTrue(os.path.exists(os.path.join(skills_dir, skill)), f"Missing: {skill}")
+
+    def test_setup_creates_guard_yaml(self):
+        from harness.creator import setup_project
+        setup_project(self.tmpdir)
+        path = os.path.join(self.tmpdir, ".harness", "guard.yaml")
+        self.assertTrue(os.path.exists(path))
+        with open(path) as f:
+            content = f.read()
+        self.assertIn("R01_layer_violation", content)
+        self.assertIn("protected_paths", content)
+
+    def test_setup_creates_hooks_settings(self):
+        from harness.creator import setup_project
+        import json
+        setup_project(self.tmpdir)
+        path = os.path.join(self.tmpdir, ".claude", "settings.json")
+        self.assertTrue(os.path.exists(path))
+        with open(path) as f:
+            data = json.load(f)
+        self.assertIn("hooks", data)
+        matchers = [h["matcher"] for h in data["hooks"]["PreToolUse"]]
+        self.assertIn("Bash", matchers)
+
+    def test_init_also_copies_skills(self):
+        from harness.creator import generate_scaffold
+        generate_scaffold(self.tmpdir, "testproj", "python", "library")
+        skills_dir = os.path.join(self.tmpdir, ".claude", "skills")
+        self.assertTrue(os.path.isdir(skills_dir))
+        self.assertTrue(os.path.exists(os.path.join(skills_dir, "harness-do.md")))
+
+
 if __name__ == "__main__":
     unittest.main()

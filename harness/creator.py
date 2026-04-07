@@ -244,6 +244,64 @@ def generate_scaffold(
             if os.path.isfile(src) and _write_if_not_exists(dst, Path(src).read_text(encoding="utf-8")):
                 created.append(dst)
 
+    # --- .claude/skills/ templates ---
+    skills_src = os.path.join(TEMPLATES_DIR, "skills")
+    skills_dst = os.path.join(target_dir, ".claude", "skills")
+    if os.path.isdir(skills_src):
+        os.makedirs(skills_dst, exist_ok=True)
+        for fname in os.listdir(skills_src):
+            src = os.path.join(skills_src, fname)
+            dst = os.path.join(skills_dst, fname)
+            if os.path.isfile(src) and _write_if_not_exists(dst, Path(src).read_text(encoding="utf-8")):
+                created.append(dst)
+
+    # --- .harness/guard.yaml ---
+    guard_yaml_path = os.path.join(target_dir, ".harness", "guard.yaml")
+    guard_content = """\
+rules:
+  R01_layer_violation: true
+  R02_import_violation: true
+  R03_force_push: true
+  R04_push_main: true
+  R05_destructive_git: true
+  R06_protected_files: true
+  R07_sudo: true
+  R08_secret_pattern: true
+
+protected_paths:
+  - ".env*"
+  - ".git/"
+  - "harness/"
+
+secret_patterns:
+  - "AKIA[0-9A-Z]{16}"
+  - "sk-[a-zA-Z0-9]{20,}"
+  - "ghp_[a-zA-Z0-9]{36}"
+"""
+    os.makedirs(os.path.dirname(guard_yaml_path), exist_ok=True)
+    if _write_if_not_exists(guard_yaml_path, guard_content):
+        created.append(guard_yaml_path)
+
+    # --- .claude/settings.json (hooks) ---
+    import json as _json
+    settings_path = os.path.join(target_dir, ".claude", "settings.json")
+    os.makedirs(os.path.dirname(settings_path), exist_ok=True)
+    from harness.hooks import generate_hooks_config
+    if os.path.exists(settings_path):
+        existing_text = Path(settings_path).read_text(encoding="utf-8")
+        existing = _json.loads(existing_text)
+        if "hooks" not in existing:
+            existing.update(generate_hooks_config())
+            Path(settings_path).write_text(
+                _json.dumps(existing, indent=2, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            created.append(settings_path + " (merged)")
+    else:
+        hooks_cfg = generate_hooks_config()
+        if _write_if_not_exists(settings_path, _json.dumps(hooks_cfg, indent=2, ensure_ascii=False)):
+            created.append(settings_path)
+
     # --- .gitignore addition for .harness ---
     gitignore = os.path.join(target_dir, ".gitignore")
     harness_ignore = "\n# Harness runtime data (optional: remove to share team memory)\n.harness/\n"
@@ -465,6 +523,64 @@ def setup_project(project_root: str) -> list[str]:
             dst = os.path.join(agents_dst, fname)
             if os.path.isfile(src) and _write_if_not_exists(dst, Path(src).read_text(encoding="utf-8")):
                 created.append(dst)
+
+    # --- .claude/skills/ templates ---
+    skills_src = os.path.join(TEMPLATES_DIR, "skills")
+    skills_dst = os.path.join(root, ".claude", "skills")
+    if os.path.isdir(skills_src):
+        os.makedirs(skills_dst, exist_ok=True)
+        for fname in os.listdir(skills_src):
+            src = os.path.join(skills_src, fname)
+            dst = os.path.join(skills_dst, fname)
+            if os.path.isfile(src) and _write_if_not_exists(dst, Path(src).read_text(encoding="utf-8")):
+                created.append(dst)
+
+    # --- .harness/guard.yaml ---
+    guard_yaml_path = os.path.join(root, ".harness", "guard.yaml")
+    guard_content = """\
+rules:
+  R01_layer_violation: true
+  R02_import_violation: true
+  R03_force_push: true
+  R04_push_main: true
+  R05_destructive_git: true
+  R06_protected_files: true
+  R07_sudo: true
+  R08_secret_pattern: true
+
+protected_paths:
+  - ".env*"
+  - ".git/"
+  - "harness/"
+
+secret_patterns:
+  - "AKIA[0-9A-Z]{16}"
+  - "sk-[a-zA-Z0-9]{20,}"
+  - "ghp_[a-zA-Z0-9]{36}"
+"""
+    os.makedirs(os.path.dirname(guard_yaml_path), exist_ok=True)
+    if _write_if_not_exists(guard_yaml_path, guard_content):
+        created.append(guard_yaml_path)
+
+    # --- .claude/settings.json (hooks) ---
+    import json as _json
+    settings_path = os.path.join(root, ".claude", "settings.json")
+    os.makedirs(os.path.dirname(settings_path), exist_ok=True)
+    from harness.hooks import generate_hooks_config
+    if os.path.exists(settings_path):
+        existing_text = Path(settings_path).read_text(encoding="utf-8")
+        existing = _json.loads(existing_text)
+        if "hooks" not in existing:
+            existing.update(generate_hooks_config())
+            Path(settings_path).write_text(
+                _json.dumps(existing, indent=2, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            created.append(settings_path + " (merged)")
+    else:
+        hooks_cfg = generate_hooks_config()
+        if _write_if_not_exists(settings_path, _json.dumps(hooks_cfg, indent=2, ensure_ascii=False)):
+            created.append(settings_path)
 
     # --- .gitignore for .harness ---
     gitignore = os.path.join(root, ".gitignore")
