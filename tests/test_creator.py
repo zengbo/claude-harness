@@ -153,7 +153,7 @@ class TestScoreProject(unittest.TestCase):
 
     def test_has_dimension_scores(self):
         self.assertIn("documentation", self.score)
-        self.assertIn("lint_coverage", self.score)
+        self.assertIn("lint_rules", self.score)
         self.assertIn("test_coverage", self.score)
         self.assertIn("validation_pipeline", self.score)
 

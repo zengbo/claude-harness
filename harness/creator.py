@@ -482,15 +482,27 @@ def setup_project(project_root: str) -> list[str]:
     return created
 
 
+def _has_block(filepath: str, tag: str) -> bool:
+    """Check if a markdown file contains a ```tag``` code block."""
+    if not os.path.exists(filepath):
+        return False
+    import re
+    text = Path(filepath).read_text(encoding="utf-8")
+    return bool(re.search(rf"```{re.escape(tag)}\s*\n", text))
+
+
 def score_project(
     scan: dict[str, Any], project_root: str
 ) -> dict[str, int]:
     """Score a project's harness readiness (0-100).
 
-    Dimensions: documentation (30), lint_coverage (30),
+    Checks for harness configuration in markdown docs, not local Python files.
+    Dimensions: documentation (30), lint_rules (30),
     test_coverage (20), validation_pipeline (20).
     """
     root = os.path.abspath(project_root)
+    arch_path = os.path.join(root, "docs", "ARCHITECTURE.md")
+    dev_path = os.path.join(root, "docs", "DEVELOPMENT.md")
 
     # Documentation (max 30)
     doc_score = 0
@@ -498,45 +510,48 @@ def score_project(
         os.path.join(root, "AGENTS.md")
     ):
         doc_score += 15
-    if os.path.exists(os.path.join(root, "docs", "ARCHITECTURE.md")):
+    if os.path.exists(arch_path):
         doc_score += 10
     elif os.path.exists(os.path.join(root, "README.md")):
         doc_score += 5
-    if os.path.exists(os.path.join(root, "docs", "DEVELOPMENT.md")):
+    if os.path.exists(dev_path):
         doc_score += 5
 
-    # Lint coverage (max 30)
+    # Lint rules (max 30) — check for config blocks in ARCHITECTURE.md
     lint_score = 0
-    if scan["existing_lint"]:
+    if _has_block(arch_path, "layers"):
         lint_score += 15
-    if os.path.exists(os.path.join(root, "harness", "lint_deps.py")):
+    if _has_block(arch_path, "quality"):
         lint_score += 10
-    if os.path.exists(os.path.join(root, "harness", "lint_quality.py")):
+    if scan["existing_lint"]:
         lint_score += 5
+    lint_score = min(lint_score, 30)
 
     # Test coverage (max 20)
     test_score = 0
+    if _has_block(dev_path, "test"):
+        test_score += 10
     if scan["source_file_count"] > 0:
         ratio = scan["test_file_count"] / scan["source_file_count"]
-        test_score = min(15, int(ratio * 30))
-    if os.path.exists(os.path.join(root, "scripts", "verify")):
-        test_score += 5
+        test_score += min(10, int(ratio * 20))
+    test_score = min(test_score, 20)
 
-    # Validation pipeline (max 20)
+    # Validation pipeline (max 20) — check for build/lint blocks in DEVELOPMENT.md
     pipeline_score = 0
-    if os.path.exists(os.path.join(root, "harness", "validate.py")):
-        pipeline_score += 15
-    elif scan["build_systems"]:
+    if _has_block(dev_path, "build"):
+        pipeline_score += 10
+    if _has_block(dev_path, "lint"):
         pipeline_score += 5
-    if os.path.exists(os.path.join(root, "scripts", "validate.sh")):
+    if scan["build_systems"]:
         pipeline_score += 5
+    pipeline_score = min(pipeline_score, 20)
 
     total = doc_score + lint_score + test_score + pipeline_score
 
     return {
         "total": total,
         "documentation": doc_score,
-        "lint_coverage": lint_score,
+        "lint_rules": lint_score,
         "test_coverage": test_score,
         "validation_pipeline": pipeline_score,
     }
