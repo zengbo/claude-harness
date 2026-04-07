@@ -1,0 +1,19 @@
+rules:
+  R01_layer_violation: true
+  R02_import_violation: true
+  R03_force_push: true
+  R04_push_main: true
+  R05_destructive_git: true
+  R06_protected_files: true
+  R07_sudo: true
+  R08_secret_pattern: true
+
+protected_paths:
+  - ".env*"
+  - ".git/"
+  - "harness/"
+
+secret_patterns:
+  - "AKIA[0-9A-Z]{16}"
+  - "sk-[a-zA-Z0-9]{20,}"
+  - "ghp_[a-zA-Z0-9]{36}"
