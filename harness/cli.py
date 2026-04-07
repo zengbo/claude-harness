@@ -165,6 +165,56 @@ def cmd_memory(args):
     return 0
 
 
+def cmd_guard(args):
+    from harness.guard import ActionContext, evaluate, load_guard_config
+    import os
+
+    sub = args.guard_command
+
+    if sub == "test":
+        command = args.bash_command
+        project_root = os.getcwd()
+        ctx = ActionContext(
+            action_type="bash",
+            command=command,
+            file_path=None,
+            content=command,
+            project_root=project_root,
+        )
+        config_path = os.path.join(project_root, ".harness", "guard.yaml")
+        cfg = load_guard_config(config_path)
+        verdict = evaluate(ctx, cfg)
+        if verdict.action == "allow":
+            print(f"\u2705 allow — {verdict.message}")
+        elif verdict.action == "warn":
+            print(f"\u26a0\ufe0f  warn — {verdict.rule_id}: {verdict.message}")
+        else:
+            print(f"\u274c deny — {verdict.rule_id}: {verdict.message}")
+        return 0 if verdict.action != "deny" else 1
+
+    if sub == "show":
+        import os
+        project_root = os.getcwd()
+        config_path = os.path.join(project_root, ".harness", "guard.yaml")
+        cfg = load_guard_config(config_path)
+        print(f"Guard config: {config_path}")
+        print("\nRules:")
+        for rule_id, enabled in cfg.rules.items():
+            status = "\u2705 enabled" if enabled else "\u274c disabled"
+            print(f"  {rule_id}: {status}")
+        if cfg.protected_paths:
+            print("\nProtected paths:")
+            for p in cfg.protected_paths:
+                print(f"  - {p}")
+        if cfg.secret_patterns:
+            print("\nSecret patterns:")
+            for p in cfg.secret_patterns:
+                print(f"  - {p}")
+        return 0
+
+    return 0
+
+
 def cmd_critic(args):
     from harness.critic import analyze_failures, find_compilable_patterns
 
@@ -294,6 +344,15 @@ def build_parser():
     p.add_argument("--min-count", type=int, default=2)
     p.add_argument("--min-successes", type=int, default=3)
 
+    # --- guard ---
+    p = sub.add_parser("guard", help="Test commands against guard rules or show current config")
+    gsub = p.add_subparsers(dest="guard_command", required=True)
+
+    g = gsub.add_parser("test", help="Test a bash command against guard rules")
+    g.add_argument("bash_command", help='The bash command to test, e.g. "git push --force origin main"')
+
+    gsub.add_parser("show", help="Show current guard config from .harness/guard.yaml")
+
     return parser
 
 
@@ -314,6 +373,7 @@ def main():
         "trace": cmd_trace,
         "memory": cmd_memory,
         "critic": cmd_critic,
+        "guard": cmd_guard,
     }
 
     handler = handlers[args.command]
